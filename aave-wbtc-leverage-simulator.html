@@ -235,19 +235,6 @@
             Health Factor/Liquidationspreis zeigen dir direkt, wie eng das von Anfang an ist. Ab Loop 2 (cbBTC) gilt wieder das normale Max-LTV unten.
           </div>
         </div>
-        <div id="fluidSplitSection">
-          <div class="field">
-            <label>Anteil Start-wBTC im USDC-Vault (%) <span class="val" id="v-fluidsplit">15</span></label>
-            <input type="range" id="fluidsplit" min="0" max="100" step="1" value="15">
-          </div>
-          <div class="hint" style="margin-top:-6px;margin-bottom:10px;">
-            Fluid kennt keine gemeinsame Position: der Rest deines Start-wBTC geht in einen komplett getrennten
-            USDC-Vault (fix 2×, wie oben), der Rest in einen separaten cbBTC-Vault (loopt bis zur Max-LTV unten).
-            Beide haben eigene, unabhängige Health Factors/Liquidationspreise — der USDC-Vault profitiert NICHT
-            vom Hedge des cbBTC-Vaults. Rechnerisch maximiert 0 % dein Gesamt-wBTC (siehe Chat); &gt;0 % ergibt
-            nur Sinn, wenn du echte USD-Liquidität brauchst, nicht nur mehr wBTC.
-          </div>
-        </div>
         <div class="field">
           <label>Sicherheitspuffer: genutzter Anteil vom Max-LTV (%) <span class="val" id="v-util">88</span></label>
           <input type="range" id="util" min="40" max="100" step="1" value="88">
@@ -306,8 +293,8 @@
       <fieldset>
         <legend>Tilgung aus Einkommen</legend>
         <div class="field">
-          <label>Monatliche Tilgung (USD) <span class="val" id="v-repay">800</span></label>
-          <input type="range" id="repay" min="0" max="5000" step="50" value="800">
+          <label>Monatliche Tilgung (USD) <span class="val" id="v-repay">0</span></label>
+          <input type="range" id="repay" min="0" max="5000" step="50" value="0">
         </div>
         <div class="field">
           <label>Priorität</label>
@@ -326,7 +313,7 @@
         </div>
         <div class="field">
           <label>Datum</label>
-          <input type="month" id="deleverDate" value="2026-12">
+          <input type="month" id="deleverDate" value="2030-10">
         </div>
         <div class="hint">Wandelt USD-Schuld (preisrisikobehaftet) in cbBTC-Schuld (bewegt sich mit dem Collateral) um — begrenzt durch die verfügbare Beleihungskapazität zu diesem Zeitpunkt. Bei Fluid nicht verfügbar: das würde Collateral/Schuld manuell zwischen den getrennten Vaults verschieben, was kein einfacher Loop-Schritt mehr ist.</div>
       </fieldset>
@@ -342,15 +329,6 @@
           <label>Ziel-BTC-Preis am Laufzeitende (USD) <span class="val" id="v-targetend">180.000</span></label>
           <input type="number" id="targetEndPrice" value="180000" min="1000" step="1000">
           <div class="hint" id="targetEndHint">Setzt automatisch die CAGR unten so, dass dieser Preis am Laufzeitende (siehe oben) erreicht wird.</div>
-        </div>
-        <div class="field">
-          <label>Preisziel schnell setzen (Alternative)</label>
-          <div class="field-row">
-            <input type="month" id="targetDate" value="2027-01">
-            <button class="btn secondary" id="apply2x" type="button">2×</button>
-            <button class="btn secondary" id="apply3x" type="button">3×</button>
-          </div>
-          <div class="hint" id="targetHint">Setzt die CAGR stattdessen so, dass der Preis bis zu einem frei wählbaren Datum das 2- bzw. 3-Fache von heute erreicht (überschreibt das Ziel-Preis-Feld oben).</div>
         </div>
         <div class="field">
           <label>Erwartetes Wachstum p.a. (CAGR, %) <span class="val" id="v-cagr">20</span></label>
@@ -370,8 +348,8 @@
             <input type="month" id="crashDate" value="2028-06">
           </div>
           <div class="field">
-            <label>Tiefe (%) <span class="val" id="v-crashpct">55</span></label>
-            <input type="range" id="crashpct" min="5" max="90" step="1" value="55">
+            <label>Tiefe (%) <span class="val" id="v-crashpct">50</span></label>
+            <input type="range" id="crashpct" min="5" max="90" step="1" value="50">
           </div>
         </div>
         <div class="hint" style="margin-top:-6px;">
@@ -445,7 +423,7 @@
   var els = {};
   ["btc0","p0","protocol","maxltv","lt","emode","emodeltv","emodelt","targethf","maxbonus","bonusatthreshold","force2x","util","fee","maxloops","basis",
    "usdcapy","cbbtcapy","supplyapy","repay","repayPriority","deleverOn","deleverDate",
-   "horizon","cagr","vol","crashOn","crashDate","crashpct","targetDate","targetEndPrice","fluidsplit",
+   "horizon","cagr","vol","crashOn","crashDate","crashpct","targetEndPrice",
    "basisShockOn","basisShockDate"].forEach(function(id){ els[id]=document.getElementById(id); });
 
   var fmtUSD0 = new Intl.NumberFormat("de-DE",{maximumFractionDigits:0});
@@ -495,7 +473,7 @@
       crashMonth: monthDiff(startDate(), parseMonthInput(els.crashDate.value)),
       crashPct: parseFloat(els.crashpct.value)/100,
       targetEndPrice: parseFloat(els.targetEndPrice.value)||0,
-      fluidSplit: els.fluidsplit ? parseFloat(els.fluidsplit.value)/100 : 0,
+      skipUsdcLoop: els.protocol.value==="fluid",
       dust: 25
     };
   }
@@ -675,21 +653,6 @@
     return simulateOverPricePath(flat, p);
   }
 
-  // Fluid has no pooled position: model it as two fully independent vaults sharing the
-  // starting wBTC. Vault A = fixed 2x on its slice (USDC debt only), Vault B = looped to
-  // Max-LTV on its slice (cbBTC debt only). Each keeps its own health factor / liquidation price.
-  function fluidVaultParams(p){
-    var pA = Object.assign({}, p, {btc0: p.btc0*p.fluidSplit, force2x:true, skipCbbtcLoops:true, skipUsdcLoop:false,
-      monthlyRepay: p.monthlyRepay*p.fluidSplit, deleverOn:false});
-    var pB = Object.assign({}, p, {btc0: p.btc0*(1-p.fluidSplit), skipUsdcLoop:true, skipCbbtcLoops:false,
-      monthlyRepay: p.monthlyRepay*(1-p.fluidSplit), deleverOn:false});
-    return {pA:pA, pB:pB};
-  }
-  function simulateFluidTwoVaults(pricePath, p){
-    var vp = fluidVaultParams(p);
-    return {simA: simulateOverPricePath(pricePath, vp.pA), simB: simulateOverPricePath(pricePath, vp.pB), pA:vp.pA, pB:vp.pB};
-  }
-
   // ---------- Rendering ----------
 
   function statusPillHTML(hf){
@@ -733,51 +696,23 @@
     return '<div class="stat"><div class="label">'+label+'</div><div class="value num">'+value+'</div><div class="sub">'+sub+'</div></div>';
   }
 
-  function renderFluidStats(res, p){
-    var simA = res.simA, simB = res.simB;
-    var a0 = simA.init.collateral0, b0 = simB.init.collateral0;
-    var total = a0+b0;
-    var lev = total/p.btc0;
-    var sA0 = simA.snaps[0], sB0 = simB.snaps[0];
-    var asymptoticB = buildInitialPosition(Object.assign({}, res.pB, {maxLoops:300, dust:0.01})).collateral0;
-    var asymptoticTotal = (p.fluidSplit*p.btc0*2) + asymptoticB;
-    var html = "";
-    html += statTile("wBTC gesamt (2 Vaults)", fmtBTC.format(total)+" wBTC", "Vault A: "+fmtBTC.format(a0)+" · Vault B: "+fmtBTC.format(b0));
-    html += statTile("Effektiver Hebel", lev.toFixed(2)+"×", "Grenzwert bei unbegrenzten Loops: "+(asymptoticTotal/p.btc0).toFixed(2)+"× (bei "+(p.fluidSplit*100).toFixed(0)+"% Split)");
-    var fmtA = formatLiqPrice(sA0.pLiq, p.p0), fmtB = formatLiqPrice(sB0.pLiq, p.p0);
-    html += statTile("Vault A (USDC) — Liq.-Preis", fmtA.plStr, "HF: "+(sA0.hf===Infinity?"∞":sA0.hf.toFixed(2))+" · "+fmtA.bufferStr);
-    html += statTile("Vault B (cbBTC) — Liq.-Preis", fmtB.plStr, "HF: "+(sB0.hf===Infinity?"∞":sB0.hf.toFixed(2))+" · "+fmtB.bufferStr);
-    var evA = simA.liquidationEvents.length, evB = simB.liquidationEvents.length;
-    html += statTile("Teilliquidationen (Preisszenario)", (evA+evB).toString(), evA+" in Vault A, "+evB+" in Vault B");
-    document.getElementById("statRow").innerHTML = html;
-  }
-
   function formatLiqPrice(pl, p0){
     if (pl===null) return {plStr:"—", bufferStr:"—"};
     if (pl<=0) return {plStr:"$0 (nur Zins-Drift)", bufferStr:"kein Preisrisiko"};
     return {plStr:"$"+fmtUSD0.format(pl), bufferStr:(((p0/pl-1)*100).toFixed(0))+"%"};
   }
-  function loopRowHTML(l, p, vaultLabel){
+  function loopRowHTML(l, p){
     var borrowedStr = l.unit==="USD" ? "$"+fmtUSD0.format(l.borrowed) : fmtBTC.format(l.borrowed)+" cbBTC";
     var pl = liqPrice(l.collateral, l.usdcDebt, l.cbbtcDebt, p);
     var fmt = formatLiqPrice(pl, p.p0);
     var plStr = fmt.plStr, bufferStr = fmt.bufferStr;
-    var vaultCell = vaultLabel!==undefined ? "<td>"+vaultLabel+"</td>" : "";
-    return "<tr>"+vaultCell+"<td>"+l.n+"</td><td>"+l.asset+"</td><td class='num'>"+borrowedStr+"</td><td class='num'>"+fmtBTC.format(l.addBtc)+"</td>"+
+    return "<tr><td>"+l.n+"</td><td>"+l.asset+"</td><td class='num'>"+borrowedStr+"</td><td class='num'>"+fmtBTC.format(l.addBtc)+"</td>"+
       "<td class='num'>"+fmtBTC.format(l.collateral)+"</td><td class='num'>$"+fmtUSD0.format(l.usdcDebt)+"</td><td class='num'>"+fmtBTC.format(l.cbbtcDebt)+"</td>"+
       "<td class='num'>"+plStr+"</td><td class='num'>"+bufferStr+"</td></tr>";
   }
   function renderLoopTable(init, p){
     var rows = '<thead><tr><th>Loop</th><th>Asset geliehen</th><th>Betrag</th><th>+ wBTC (n. Fee)</th><th>Collateral</th><th>USDC-Schuld</th><th>cbBTC-Schuld</th><th>Liq.-Preis</th><th>Puffer z. heute</th></tr></thead><tbody>';
     init.loops.forEach(function(l){ rows += loopRowHTML(l, p); });
-    rows += "</tbody>";
-    document.getElementById("loopTable").innerHTML = rows;
-  }
-  function renderFluidLoopTable(simA, simB, pA, pB){
-    var rows = '<thead><tr><th>Vault</th><th>Loop</th><th>Asset geliehen</th><th>Betrag</th><th>+ wBTC (n. Fee)</th><th>Collateral</th><th>USDC-Schuld</th><th>cbBTC-Schuld</th><th>Liq.-Preis</th><th>Puffer z. heute</th></tr></thead><tbody>';
-    simA.init.loops.forEach(function(l){ rows += loopRowHTML(l, pA, "A (USDC)"); });
-    simB.init.loops.forEach(function(l){ rows += loopRowHTML(l, pB, "B (cbBTC)"); });
-    if (simA.init.loops.length===0 && simB.init.loops.length===0) rows += "<tr><td colspan='10'>Keine Loops (Start-wBTC = 0 oder Anteil 0/100%)</td></tr>";
     rows += "</tbody>";
     document.getElementById("loopTable").innerHTML = rows;
   }
@@ -977,30 +912,6 @@
     var oneSeries = {label:"HF = 1", color:"var(--critical)", dashed:true, values: snaps.map(function(s){return {m:s.m,v:1};})};
     drawLineChart("chart-hf", [hfSeries, oneSeries], {yFormat:function(v){return v.toFixed(2);}, yMin:0.8});
   }
-  function renderFluidPriceChart(snapsA, snapsB){
-    var priceSeries = {label:"BTC-Preis", color:"var(--ink2)", values: snapsA.map(function(s){return {m:s.m,v:s.P};})};
-    var liqA = {label:"Liq. Vault A", color:"var(--debt-usdc)", dashed:true, values: snapsA.map(function(s){return {m:s.m,v:s.pLiq};})};
-    var liqB = {label:"Liq. Vault B", color:"var(--debt-cbbtc)", dashed:true, values: snapsB.map(function(s){return {m:s.m,v:s.pLiq};})};
-    document.getElementById("legend-price").innerHTML =
-      legendItem("var(--ink2)","BTC-Preis (Szenario)") + legendItem("var(--debt-usdc)","Liq.-Preis Vault A (USDC)") + legendItem("var(--debt-cbbtc)","Liq.-Preis Vault B (cbBTC)");
-    drawLineChart("chart-price", [priceSeries, liqA, liqB], {yFormat:function(v){return "$"+fmtUSD0.format(v);}});
-  }
-  function renderFluidHFChart(snapsA, snapsB){
-    var hfA = {label:"HF Vault A", color:"var(--debt-usdc)", values: snapsA.map(function(s){return {m:s.m,v:s.hf===Infinity?null:s.hf};})};
-    var hfB = {label:"HF Vault B", color:"var(--debt-cbbtc)", values: snapsB.map(function(s){return {m:s.m,v:s.hf===Infinity?null:s.hf};})};
-    var oneSeries = {label:"HF = 1", color:"var(--critical)", dashed:true, values: snapsA.map(function(s){return {m:s.m,v:1};})};
-    drawLineChart("chart-hf", [hfA, hfB, oneSeries], {yFormat:function(v){return v.toFixed(2);}, yMin:0.8});
-  }
-  function mergeFluidSnaps(snapsA, snapsB){
-    return snapsA.map(function(sa, i){
-      var sb = snapsB[i];
-      var collateral = sa.collateral+sb.collateral, P = sa.P;
-      // sa has no cbBTC debt and sb has no USDC debt, so each snap's own debtValue already
-      // reflects that vault's (possibly time-shocked) basis correctly -- just add them.
-      return {m:sa.m, P:P, collateral:collateral, usdcDebt:sa.usdcDebt, cbbtcDebt:sb.cbbtcDebt,
-        collValue:collateral*P, debtValue:sa.debtValue+sb.debtValue};
-    });
-  }
   function legendItem(color,label){
     return '<span class="sw"><span class="dot" style="background:'+color+'"></span>'+label+'</span>';
   }
@@ -1018,19 +929,6 @@
     var totalTxt = sim.wipedOut ? "<b>Collateral vollständig aufgezehrt.</b>" : ("Position bleibt bestehen, Ziel-HF "+p.targetHF.toFixed(2)+" jeweils wiederhergestellt. Kumulativ verloren: "+fmtBTC.format(sim.totalSeizedBtc)+" wBTC.");
     el.innerHTML = "<div class='hint' style='margin-bottom:6px;'>Teilliquidationen im gewählten Preisszenario — "+totalTxt+"</div>"+liqEventsTableHTML(sim.liquidationEvents);
   }
-  function renderFluidLiquidationEvents(simA, simB, p){
-    var el = document.getElementById("liqEventsPanel");
-    if (simA.liquidationEvents.length===0 && simB.liquidationEvents.length===0){ el.innerHTML=""; return; }
-    var html = "<div class='hint' style='margin-bottom:6px;'>Teilliquidationen je Vault im gewählten Preisszenario (unabhängig voneinander).</div>";
-    if (simA.liquidationEvents.length>0){
-      html += "<div class='hint' style='margin:8px 0 4px;'><b>Vault A (USDC)"+(simA.wipedOut?" — vollständig aufgezehrt":"")+":</b> kumulativ "+fmtBTC.format(simA.totalSeizedBtc)+" wBTC verloren.</div>"+liqEventsTableHTML(simA.liquidationEvents);
-    }
-    if (simB.liquidationEvents.length>0){
-      html += "<div class='hint' style='margin:12px 0 4px;'><b>Vault B (cbBTC)"+(simB.wipedOut?" — vollständig aufgezehrt":"")+":</b> kumulativ "+fmtBTC.format(simB.totalSeizedBtc)+" wBTC verloren.</div>"+liqEventsTableHTML(simB.liquidationEvents);
-    }
-    el.innerHTML = html;
-  }
-
   var PROTOCOL_UI_TEXT = {
     v4: {
       emodeLabel: "BTC-korrelierter Spoke für die cbBTC-Loops (höhere LTV/LT)",
@@ -1053,7 +951,7 @@
       emodeSliderPrefix: "",
       emodeHint: "",
       showEmode: false,
-      protocolHint: "Vault Protocol mit einfachen Single-Collateral/Single-Debt-Positionen (keine gepoolte Smart-Collateral-Konstruktion nötig — passt zu \"nur wBTC als Collateral\"). Max-LTV/Zinsen unten sind Platzhalter auf Basis von Fluids \"bis zu 95 % LTV\"-Angabe, für das konkrete WBTC→USDC/cbBTC-Vault-Paar unbestätigt. Bitte über DeFi Saver (unterstützt Fluid) live gegenprüfen, genau wie bei den Aave-Werten.",
+      protocolHint: "Vault Protocol mit einfacher Single-Collateral/Single-Debt-Position: nur wBTC als Collateral, nur cbBTC als Schuld (kein separater USDC-Vault, keine gepoolte Smart-Collateral-Konstruktion). Max-LTV/Zinsen unten sind Platzhalter auf Basis von Fluids \"bis zu 95 % LTV\"-Angabe, für das konkrete WBTC/cbBTC-Vault-Paar unbestätigt. Bitte über DeFi Saver (unterstützt Fluid) live gegenprüfen, genau wie bei den Aave-Werten.",
       hfDesc: "Fluid nutzt ein Tick-/Slot-basiertes Batch-Liquidationssystem mit sehr niedrigem Liquidationsbonus (Marketing: bis runter auf 0,1 %) statt einer harten Voll-Liquidation — hier vereinfacht wie die v4-Teilliquidation modelliert, mit eigenen (niedrigeren) Bonus-Werten unten."
     }
   };
@@ -1073,7 +971,6 @@
     document.getElementById("hfDesc").textContent = t.hfDesc;
     var isFluid = els.protocol.value==="fluid";
     document.getElementById("force2xSection").style.display = isFluid ? "none" : "block";
-    document.getElementById("fluidSplitSection").style.display = isFluid ? "block" : "none";
     document.getElementById("deleverFieldset").style.display = isFluid ? "none" : "block";
   }
 
@@ -1117,24 +1014,14 @@
     updateProtocolUI();
     var pricePath = detPricePath(p);
     document.getElementById("legend-comp").innerHTML =
-      legendItem("var(--collateral)","wBTC-Collateral (USD)") + legendItem("var(--debt-usdc)","USDC-Schuld (Vault A)") + legendItem("var(--debt-cbbtc)","cbBTC-Schuld (Vault B, USD)");
-    if (p.protocol==="fluid"){
-      var res = simulateFluidTwoVaults(pricePath, p);
-      renderFluidStats(res, p);
-      renderFluidLoopTable(res.simA, res.simB, res.pA, res.pB);
-      renderFluidPriceChart(res.simA.snaps, res.simB.snaps);
-      renderFluidHFChart(res.simA.snaps, res.simB.snaps);
-      renderFluidLiquidationEvents(res.simA, res.simB, p);
-      drawStackedArea("chart-comp", mergeFluidSnaps(res.simA.snaps, res.simB.snaps));
-    } else {
-      var sim = simulateOverPricePath(pricePath, p);
-      renderStats(sim, p);
-      renderLoopTable(sim.init, p);
-      renderPriceChart(sim.snaps);
-      renderHFChart(sim.snaps);
-      renderLiquidationEvents(sim, p);
-      drawStackedArea("chart-comp", sim.snaps);
-    }
+      legendItem("var(--collateral)","wBTC-Collateral (USD)") + legendItem("var(--debt-usdc)","USDC-Schuld") + legendItem("var(--debt-cbbtc)","cbBTC-Schuld (USD)");
+    var sim = simulateOverPricePath(pricePath, p);
+    renderStats(sim, p);
+    renderLoopTable(sim.init, p);
+    renderPriceChart(sim.snaps);
+    renderHFChart(sim.snaps);
+    renderLiquidationEvents(sim, p);
+    drawStackedArea("chart-comp", sim.snaps);
   }
 
   // ---------- Monte Carlo ----------
@@ -1163,22 +1050,7 @@
     var paths = [];
     var html = "";
 
-    if (p.protocol==="fluid"){
-      var vp = fluidVaultParams(p);
-      var aEvents=0, bEvents=0, aWipe=0, bWipe=0, seizedA=[], seizedB=[];
-      for (var i3=0;i3<N;i3++){
-        var path3 = gbmPath(p);
-        paths.push(path3);
-        var sA = simulateOverPricePath(path3, vp.pA);
-        var sB = simulateOverPricePath(path3, vp.pB);
-        if (sA.liquidationEvents.length>0){ aEvents++; seizedA.push(sA.totalSeizedBtc); }
-        if (sB.liquidationEvents.length>0){ bEvents++; seizedB.push(sB.totalSeizedBtc); }
-        if (sA.wipedOut) aWipe++;
-        if (sB.wipedOut) bWipe++;
-      }
-      html += statTile("Vault A: Pfade mit ≥1 Teilliquidation", (aEvents/N*100).toFixed(1)+"%", aEvents+" von "+N+" Pfaden, "+aWipe+"× vollständig aufgezehrt");
-      html += statTile("Vault B: Pfade mit ≥1 Teilliquidation", (bEvents/N*100).toFixed(1)+"%", bEvents+" von "+N+" Pfaden, "+bWipe+"× vollständig aufgezehrt");
-    } else if (usesPartialLiquidation(p.protocol)){
+    if (usesPartialLiquidation(p.protocol)){
       var pathsWithEvent = 0, wipeouts = 0, seizedList = [], firstEventMonths = [];
       for (var i=0;i<N;i++){
         var path = gbmPath(p);
@@ -1292,28 +1164,6 @@
     document.getElementById("v-cagr").textContent = cagrPct.toFixed(1);
     return cagrPct;
   }
-
-  function applyTargetMultiplier(mult){
-    var target = parseMonthInput(els.targetDate.value);
-    var m = monthDiff(startDate(), target);
-    if (m<=0){
-      document.getElementById("targetHint").textContent = "Zieldatum muss in der Zukunft liegen.";
-      return;
-    }
-    var cagrPct = setCagrForMultiplier(mult, m);
-    var horizonYears = m/12;
-    if (horizonYears > parseFloat(els.horizon.value)){
-      var newHorizon = Math.ceil(horizonYears*4)/4;
-      if (newHorizon > parseFloat(els.horizon.max)) els.horizon.max = String(newHorizon);
-      els.horizon.value = newHorizon;
-      document.getElementById("v-horizon").textContent = newHorizon.toFixed(2);
-    }
-    document.getElementById("targetHint").textContent =
-      mult+"× bis "+fmtMonthLabel(target)+" entspricht ca. "+cagrPct.toFixed(1)+" % p.a. Wachstum (jetzt als CAGR gesetzt).";
-    render();
-  }
-  document.getElementById("apply2x").addEventListener("click", function(){ applyTargetMultiplier(2); });
-  document.getElementById("apply3x").addEventListener("click", function(){ applyTargetMultiplier(3); });
 
   function updateHorizonEndLabel(){
     var months = Math.round(parseFloat(els.horizon.value)*12);
