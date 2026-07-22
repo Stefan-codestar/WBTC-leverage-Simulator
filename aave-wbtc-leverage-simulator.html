@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>wBTC-Leverage-Simulator (Aave v3/v4/Fluid)</title>
+<script>
+  (function(){
+    var t = localStorage.getItem('theme');
+    if(!t) t = 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 <style>
   :root{
     --bg:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
@@ -145,9 +152,12 @@
 <body>
 <div class="wrap">
 
-  <header class="top">
-    <h1>wBTC-Leverage-Simulator</h1>
-    <p class="sub">Simuliert das Aufbauen einer wBTC-Position über wiederholtes Beleihen (Ethereum) — erst USDC gegen wBTC, danach cbBTC gegen die wachsende Collateral-Position — inklusive Liquidationspreis, Health Factor und Zinskosten über die Zeit. Wähle unten zwischen Aave v3 (klassisch), Aave v4 (Hub &amp; Spoke, adaptive Teilliquidation) und Fluid Protocol (sehr hohe LTV, Batch-Liquidation).</p>
+  <header class="top" style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+    <div>
+      <h1>wBTC-Leverage-Simulator</h1>
+      <p class="sub">Simuliert das Aufbauen einer wBTC-Position über wiederholtes Beleihen (Ethereum) — erst USDC gegen wBTC, danach cbBTC gegen die wachsende Collateral-Position — inklusive Liquidationspreis, Health Factor und Zinskosten über die Zeit. Wähle unten zwischen Aave v3 (klassisch), Aave v4 (Hub &amp; Spoke, adaptive Teilliquidation) und Fluid Protocol (sehr hohe LTV, Batch-Liquidation).</p>
+    </div>
+    <button type="button" id="theme-toggle" onclick="toggleTheme()" style="padding:6px 14px;font-size:0.8rem;border:1px solid var(--hairline);border-radius:8px;background:var(--surface);color:var(--ink);cursor:pointer;white-space:nowrap;flex-shrink:0;">🌙 Dark</button>
   </header>
 
   <div class="callout">
@@ -1297,6 +1307,15 @@
   fetchLiveRates();
   window.fetchLiveRates = fetchLiveRates;
 })();
+
+function toggleTheme(){
+  var cur = document.documentElement.getAttribute('data-theme');
+  var next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  var btn = document.getElementById('theme-toggle');
+  if(btn) btn.textContent = next === 'dark' ? '🌙 Dark' : '☀️ Light';
+}
 </script>
 </body>
 </html>
