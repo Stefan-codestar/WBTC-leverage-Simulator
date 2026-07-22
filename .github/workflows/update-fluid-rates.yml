@@ -1,0 +1,56 @@
+name: Update Fluid Rates
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # alle 6 Stunden
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-rates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Fluid rates from DefiLlama
+        run: |
+          curl -s 'https://yields.llama.fi/pools' | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          pools = data.get('data', data) if isinstance(data, dict) else data
+          fluid = {}
+          for p in pools:
+              proj = p.get('project', '') or ''
+              sym = p.get('symbol', '') or ''
+              chain = p.get('chain', '') or ''
+              if 'fluid-lending' in proj.lower() and chain == 'Ethereum':
+                  if sym == 'WBTC' and 'wbtc' not in fluid:
+                      fluid['wbtc'] = {'supplyApy': p.get('apy', 0), 'tvlUsd': p.get('tvlUsd', 0)}
+                  elif sym == 'USDC' and 'usdc' not in fluid:
+                      fluid['usdc'] = {'supplyApy': p.get('apy', 0), 'tvlUsd': p.get('tvlUsd', 0)}
+          result = {
+              'wbtcSupplyApy': fluid.get('wbtc', {}).get('supplyApy', 0),
+              'usdcSupplyApy': fluid.get('usdc', {}).get('supplyApy', 0),
+              'wbtcTvlUsd': fluid.get('wbtc', {}).get('tvlUsd', 0),
+              'usdcTvlUsd': fluid.get('usdc', {}).get('tvlUsd', 0),
+              'source': 'DefiLlama yields API (fluid-lending, Ethereum)',
+              'updatedAt': __import__('datetime').datetime.utcnow().isoformat() + 'Z'
+          }
+          with open('fluid-rates.json', 'w') as f:
+              json.dump(result, f, indent=2)
+          print(json.dumps(result, indent=2))
+          "
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add fluid-rates.json
+          if git diff --cached --quiet; then
+            echo "No changes detected"
+          else
+            git commit -m "Auto-update Fluid rates (DefiLlama)"
+            git push
+          fi

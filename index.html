@@ -1217,13 +1217,19 @@
     var status = document.getElementById('live-rates-status');
     if (btn) btn.disabled = true;
     if (status) status.textContent = 'Lade live Zinsen …';
-    fetch(AAVE_GQL, {
+    // Aave v3 und Fluid-Raten parallel laden
+    var aavePromise = fetch(AAVE_GQL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: AAVE_QUERY })
-    })
-    .then(function(r){ return r.json(); })
-    .then(function(d){
+    }).then(function(r){ return r.json(); });
+    var fluidPromise = fetch('fluid-rates.json?v=' + Date.now())
+      .then(function(r){ return r.json(); })
+      .catch(function(){ return null; }); // tolerieren wenn Datei fehlt
+    Promise.all([aavePromise, fluidPromise])
+    .then(function(results){
+      var d = results[0];
+      var fluidData = results[1];
       var rates = {};
       var markets = (d.data && d.data.markets) || [];
       for (var i = 0; i < markets.length; i++){
@@ -1256,7 +1262,7 @@
         }
       }
       if (!rates.wbtc || !rates.usdc){
-        if (status) status.textContent = 'Fehler: Zinsen nicht gefunden.';
+        if (status) status.textContent = 'Fehler: Aave-Zinsen nicht gefunden.';
         if (btn) btn.disabled = false;
         return;
       }
@@ -1270,11 +1276,16 @@
       PROTOCOL_DEFAULTS.v4.usdcApy = rates.usdc.borrowApy;
       PROTOCOL_DEFAULTS.v4.cbbtcApy = rates.cbbtc.borrowApy || 0;
       PROTOCOL_DEFAULTS.v4.supplyApy = rates.wbtc.supplyApy;
-      // Liquidation-Bonus: v4 hat 7.50% für WBTC (laut DeFi-Saver)
+      // Fluid: Supply APY von DefiLlama, Borrow-Raten bleiben manuell
+      var fluidMsg = '';
+      if (fluidData && typeof fluidData.wbtcSupplyApy === 'number'){
+        PROTOCOL_DEFAULTS.fluid.supplyApy = fluidData.wbtcSupplyApy;
+        fluidMsg = ', Fluid wBTC Supply ' + fluidData.wbtcSupplyApy.toFixed(2) + '% (DefiLlama)';
+      }
       applyProtocolDefaults();
       var now = new Date();
       var ts = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-      if (status) status.textContent = 'Live-Zinsen geladen (' + ts + '): USDC ' + rates.usdc.borrowApy.toFixed(2) + '%, cbBTC ' + (rates.cbbtc.borrowApy || 0).toFixed(2) + '%, wBTC Supply ' + rates.wbtc.supplyApy.toFixed(2) + '%, LTV ' + rates.wbtc.maxltv.toFixed(0) + '%, LT ' + rates.wbtc.lt.toFixed(0) + '%';
+      if (status) status.textContent = 'Live-Zinsen geladen (' + ts + '): USDC ' + rates.usdc.borrowApy.toFixed(2) + '%, cbBTC ' + (rates.cbbtc.borrowApy || 0).toFixed(2) + '%, wBTC Supply ' + rates.wbtc.supplyApy.toFixed(2) + '%, LTV ' + rates.wbtc.maxltv.toFixed(0) + '%, LT ' + rates.wbtc.lt.toFixed(0) + '%' + fluidMsg;
       if (btn) btn.disabled = false;
     })
     .catch(function(err){
