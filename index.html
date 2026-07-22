@@ -1,0 +1,1209 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wBTC-Leverage-Simulator (Aave v3/v4/Fluid)</title>
+<style>
+  :root{
+    --bg:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+    --hairline:#e1e0d9; --border:rgba(11,11,11,0.10);
+    --collateral:#eda100; --debt-usdc:#2a78d6; --debt-cbbtc:#eb6834;
+    --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+    --radius:10px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+      --hairline:#2c2c2a; --border:rgba(255,255,255,0.10);
+      --collateral:#c98500; --debt-usdc:#3987e5; --debt-cbbtc:#d95926;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --hairline:#2c2c2a; --border:rgba(255,255,255,0.10);
+    --collateral:#c98500; --debt-usdc:#3987e5; --debt-cbbtc:#d95926;
+  }
+  :root[data-theme="light"]{
+    --bg:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+    --hairline:#e1e0d9; --border:rgba(11,11,11,0.10);
+    --collateral:#eda100; --debt-usdc:#2a78d6; --debt-cbbtc:#eb6834;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    line-height:1.45;
+    overflow-x:hidden;
+  }
+  .num{ font-variant-numeric: tabular-nums; font-feature-settings:"tnum" 1; }
+  .mono{ font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace; }
+
+  .wrap{ max-width:1280px; margin:0 auto; padding:28px 20px 80px; }
+
+  header.top{ margin-bottom:20px; }
+  header.top h1{
+    font-size:1.55rem; margin:0 0 4px; letter-spacing:-0.01em; text-wrap:balance;
+    font-weight:700;
+  }
+  header.top p.sub{ margin:0; color:var(--ink2); font-size:0.92rem; max-width:70ch; }
+
+  .callout{
+    border:1px solid var(--border); border-left:3px solid var(--warning);
+    background:var(--surface); border-radius:var(--radius);
+    padding:12px 16px; margin:16px 0 24px; font-size:0.86rem; color:var(--ink2);
+  }
+  .callout b{ color:var(--ink); }
+  .callout.critical{ border-left-color:var(--critical); }
+
+  .layout{ display:grid; grid-template-columns:300px 1fr; gap:20px; align-items:start; }
+  @media (max-width:880px){ .layout{ grid-template-columns:1fr; } }
+
+  fieldset{
+    border:1px solid var(--hairline); border-radius:var(--radius);
+    padding:12px 14px 14px; margin:0 0 14px;
+  }
+  fieldset legend{
+    font-size:0.7rem; text-transform:uppercase; letter-spacing:0.06em;
+    color:var(--muted); padding:0 4px; font-weight:600;
+  }
+  .field{ margin-bottom:10px; }
+  .field:last-child{ margin-bottom:0; }
+  .field label{ display:flex; justify-content:space-between; gap:8px; font-size:0.8rem; color:var(--ink2); margin-bottom:3px; }
+  .field label span.val{ color:var(--ink); font-weight:600; }
+  .field input[type=number], .field input[type=text], .field input[type=month], .field select{
+    width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--hairline);
+    background:var(--surface); color:var(--ink); font-size:0.86rem;
+  }
+  .field input[type=range]{ width:100%; accent-color:var(--collateral); }
+  .field-row{ display:flex; gap:8px; }
+  .field-row .field{ flex:1; }
+  .checkrow{ display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--ink2); margin-bottom:10px; }
+  .checkrow input{ accent-color:var(--collateral); }
+  .hint{ font-size:0.72rem; color:var(--muted); margin-top:3px; }
+
+  .stat-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin-bottom:18px; }
+  @media (max-width:1040px){ .stat-row{ grid-template-columns:repeat(2,1fr); } }
+  .stat{
+    background:var(--surface); border:1px solid var(--hairline); border-radius:var(--radius);
+    padding:12px 14px;
+  }
+  .stat .label{ font-size:0.68rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); font-weight:600; }
+  .stat .value{ font-size:1.32rem; font-weight:700; margin-top:4px; }
+  .stat .sub{ font-size:0.74rem; color:var(--ink2); margin-top:3px; }
+  .pill{
+    display:inline-block; padding:1px 8px; border-radius:99px; font-size:0.68rem; font-weight:700;
+    margin-top:6px;
+  }
+  .pill.good{ background:color-mix(in srgb, var(--good) 18%, transparent); color:var(--good); }
+  .pill.warning{ background:color-mix(in srgb, var(--warning) 22%, transparent); color:#8a5a00; }
+  .pill.critical{ background:color-mix(in srgb, var(--critical) 18%, transparent); color:var(--critical); }
+  @media (prefers-color-scheme:dark){ .pill.warning{ color:var(--warning); } }
+  :root[data-theme="dark"] .pill.warning{ color:var(--warning); }
+
+  .panel{
+    background:var(--surface); border:1px solid var(--hairline); border-radius:var(--radius);
+    padding:16px; margin-bottom:18px;
+  }
+  .panel h2{ font-size:0.95rem; margin:0 0 2px; }
+  .panel p.desc{ font-size:0.78rem; color:var(--ink2); margin:0 0 12px; }
+  .legend{ display:flex; gap:14px; flex-wrap:wrap; font-size:0.75rem; color:var(--ink2); margin-bottom:6px; }
+  .legend .sw{ display:inline-flex; align-items:center; gap:5px; }
+  .legend .dot{ width:9px; height:9px; border-radius:2px; display:inline-block; }
+
+  .chart-wrap{ overflow-x:auto; }
+  svg.chart{ display:block; }
+  .crosshair-line{ stroke:var(--muted); stroke-width:1; stroke-dasharray:2 3; }
+  .tooltip-box{ font-size:11px; }
+  .tooltip-bg{ fill:var(--surface); stroke:var(--hairline); }
+  .grid-line{ stroke:var(--hairline); stroke-width:1; }
+  .axis-text{ fill:var(--muted); font-size:10.5px; }
+  .end-label{ font-size:11px; font-weight:700; }
+
+  table{ width:100%; border-collapse:collapse; font-size:0.8rem; }
+  table th{ text-align:right; font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); padding:6px 8px; border-bottom:1px solid var(--hairline); font-weight:600; }
+  table th:first-child, table td:first-child{ text-align:left; }
+  table td{ text-align:right; padding:5px 8px; border-bottom:1px solid var(--hairline); }
+  table tbody tr:last-child td{ border-bottom:none; }
+
+  .btn{
+    background:var(--ink); color:var(--bg); border:none; border-radius:7px;
+    padding:8px 14px; font-size:0.82rem; font-weight:600; cursor:pointer;
+  }
+  .btn:hover{ opacity:0.88; }
+  .btn.secondary{ background:transparent; color:var(--ink); border:1px solid var(--hairline); }
+
+  .mc-result{ display:flex; gap:18px; flex-wrap:wrap; margin-top:12px; }
+  .mc-result .stat{ min-width:150px; flex:1; }
+
+  footer.notes{ margin-top:28px; border-top:1px solid var(--hairline); padding-top:16px; font-size:0.72rem; color:var(--muted); }
+  footer.notes h3{ font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin:14px 0 4px; }
+  footer.notes ul{ margin:4px 0; padding-left:18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>wBTC-Leverage-Simulator</h1>
+    <p class="sub">Simuliert das Aufbauen einer wBTC-Position über wiederholtes Beleihen (Ethereum) — erst USDC gegen wBTC, danach cbBTC gegen die wachsende Collateral-Position — inklusive Liquidationspreis, Health Factor und Zinskosten über die Zeit. Wähle unten zwischen Aave v3 (klassisch), Aave v4 (Hub &amp; Spoke, adaptive Teilliquidation) und Fluid Protocol (sehr hohe LTV, Batch-Liquidation).</p>
+  </header>
+
+  <div class="callout">
+    <b>Kein Steuer- oder Anlagerat.</b> Alle Zahlen sind Annahmen, die du links anpassen kannst.
+    Die unterstellte Steuerpflicht ab 01.01.2027 ist hypothetisch. Protokoll-Parameter (LTV, Liquidation Threshold, Zinssätze)
+    ändern sich laufend — vor echtem Einsatz live gegenprüfen (Aave: <span class="mono">app.aave.com/markets</span>, Fluid: <span class="mono">app.fluid.instadapp.io</span>, oder über DeFi Saver für beide).
+    DeFi-Risiken (Smart-Contract-Bugs, Oracle-Fehler, wBTC/cbBTC-Custodian-Risiko) sind hier nicht eingepreist. Fluid ist deutlich kleiner/jünger als Aave (~$1,6 Mrd. TVL) — mehr Protokollrisiko für den Renditevorteil.
+  </div>
+
+  <div class="layout">
+    <!-- CONTROLS -->
+    <div class="controls">
+      <fieldset>
+        <legend>Ausgangslage</legend>
+        <div class="field">
+          <label>Start-wBTC (eigenes Collateral) <span class="val" id="v-btc0">1.00</span></label>
+          <input type="number" id="btc0" value="1" min="0.01" step="0.01">
+        </div>
+        <div class="field">
+          <label>BTC-Preis heute (USD) <span class="val" id="v-p0">63.600</span></label>
+          <input type="number" id="p0" value="63600" min="1000" step="500">
+          <div class="hint">Stand 18.07.2026 (~$63.600, Mittel aus CoinMarketCap/CoinGecko/TradingView) — kein Live-Feed, aber jederzeit frei überschreibbar. Siehe Hinweis im Chat, warum kein automatischer Live-Abruf eingebaut ist.</div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Protokoll &amp; Parameter</legend>
+        <div class="field">
+          <label>Protokoll-Version</label>
+          <select id="protocol">
+            <option value="v4">Aave v4 (Hub &amp; Spoke, seit März 2026 live)</option>
+            <option value="v3">Aave v3 (klassische Isolated Pools)</option>
+            <option value="fluid">Fluid Protocol (Vaults, single collateral/debt)</option>
+          </select>
+          <div class="hint" id="protocolHint"></div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Max. LTV (%) <span class="val" id="v-maxltv">73</span></label>
+            <input type="range" id="maxltv" min="40" max="98" step="1" value="73">
+          </div>
+          <div class="field">
+            <label>Liq.-Threshold (%) <span class="val" id="v-lt">78</span></label>
+            <input type="range" id="lt" min="40" max="99" step="1" value="78">
+          </div>
+        </div>
+        <div id="emodeSection">
+          <div class="checkrow">
+            <input type="checkbox" id="emode">
+            <label for="emode" id="emodeLabel">BTC-korrelierter Spoke für die cbBTC-Loops (höhere LTV/LT)</label>
+          </div>
+          <div class="hint" style="margin-top:-6px;margin-bottom:10px;" id="emodeHint"></div>
+          <div class="field-row">
+            <div class="field">
+              <label id="emodeltvLabel">Spoke-LTV (%) <span class="val" id="v-emodeltv">82</span></label>
+              <input type="range" id="emodeltv" min="70" max="98" step="1" value="82">
+            </div>
+            <div class="field">
+              <label id="emodeltLabel">Spoke-LT (%) <span class="val" id="v-emodelt">84</span></label>
+              <input type="range" id="emodelt" min="70" max="99" step="1" value="84">
+            </div>
+          </div>
+        </div>
+        <div class="field-row" id="v4LiqRow">
+          <div class="field">
+            <label>Ziel-HF nach Teilliquidation <span class="val" id="v-targethf">1.05</span></label>
+            <input type="range" id="targethf" min="1.01" max="1.3" step="0.01" value="1.05">
+          </div>
+          <div class="field">
+            <label>Max. Liq.-Bonus (%) <span class="val" id="v-maxbonus">8</span></label>
+            <input type="range" id="maxbonus" min="0.1" max="20" step="0.1" value="8">
+          </div>
+        </div>
+        <input type="hidden" id="bonusatthreshold" value="1">
+        <div class="hint" id="v4LiqHint" style="margin-top:-6px;">
+          Statt einer harten Voll-Liquidation bei HF&lt;1 kauft ein Liquidator nur so viel Collateral, wie nötig ist, um den Ziel-HF wiederherzustellen — mit einem Bonus, der von einem Minimalwert (knapp unter HF=1) bis zum Max-Bonus (bei HF≈0,85) ansteigt. Die Position überlebt dadurch meist mehrere Dip-Phasen statt in einem Schlag liquidiert zu werden.
+        </div>
+        <div id="force2xSection">
+          <div class="checkrow">
+            <input type="checkbox" id="force2x" checked>
+            <label for="force2x">Erster USDC-Loop: exakt 2× (100 % des wBTC-Werts leihen, unabhängig vom Max-LTV)</label>
+          </div>
+          <div class="hint" style="margin-top:-6px;margin-bottom:10px;">
+            Entspricht 100 % LTV für diesen einen Schritt — mehr, als reale Protokolle für wBTC zulassen (aktuell max. ~73–95 %, je nach Protokoll).
+            Health Factor/Liquidationspreis zeigen dir direkt, wie eng das von Anfang an ist. Ab Loop 2 (cbBTC) gilt wieder das normale Max-LTV unten.
+          </div>
+        </div>
+        <div class="field">
+          <label>Sicherheitspuffer: genutzter Anteil vom Max-LTV (%) <span class="val" id="v-util">88</span></label>
+          <input type="range" id="util" min="40" max="100" step="1" value="88">
+          <div class="hint">Gilt ab Loop 2 (cbBTC). Niedriger = weniger Loops, mehr Abstand zur Liquidation. 100 % nutzt jeden Loop bis exakt an die Max-LTV-Grenze. Default 88 % = empfohlener Sweet Spot: ~20 % Depeg-Puffer bei ~80 % des Maximal-Collaterals (97–99 % wie in den DeFi-Saver-Tests halbiert den Puffer für nur ~20 % mehr Collateral).</div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Swap-Fee/Slippage je Loop (%) <span class="val" id="v-fee">0.20</span></label>
+            <input type="range" id="fee" min="0" max="2" step="0.05" value="0.2">
+          </div>
+          <div class="field">
+            <label>Max. Loops <span class="val" id="v-maxloops">25</span></label>
+            <input type="range" id="maxloops" min="1" max="40" step="1" value="25">
+          </div>
+        </div>
+        <div class="checkrow">
+          <input type="checkbox" id="basisShockOn" checked>
+          <label for="basisShockOn">Depeg-Schock einbauen (wBTC/cbBTC entkoppeln sich ab einem Datum)</label>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Schock-Datum</label>
+            <input type="month" id="basisShockDate" value="2028-06">
+          </div>
+          <div class="field">
+            <label>cbBTC/wBTC Preis-Basis danach (%) <span class="val" id="v-basis">2.0</span></label>
+            <input type="range" id="basis" min="-15" max="15" step="0.5" value="2">
+          </div>
+        </div>
+        <div class="hint">
+          Bis zum Schock-Datum gilt 1:1 (Position wird immer zum fairen Kurs aufgebaut). Ab dann bleibt die cbBTC-Schuld
+          dauerhaft um diesen Wert teurer/günstiger relativ zum wBTC-Collateral — positiv = cbBTC-Schuld wird teurer
+          (verschärft Liquidationsrisiko), unabhängig vom BTC-Gesamtpreis. Historischer Referenzwert: wBTC handelte im
+          Nov. 2022 (FTX-Kontagion) kurzzeitig mit ca. 1–2 % Abschlag zu BTC — 2 % Default hier ist dieser Erfahrungswert,
+          nicht das Maximum.
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Zinsen (Borrow/Supply APY)</legend>
+        <div class="hint" style="margin-top:0;margin-bottom:10px;">Default = live von DeFi Saver abgelesen (Stand 18.07.2026), passt sich beim Protokollwechsel automatisch an. Jederzeit manuell überschreibbar.</div>
+        <div class="field">
+          <label>USDC Borrow APY (%) <span class="val" id="v-usdcapy">3.89</span></label>
+          <input type="range" id="usdcapy" min="0" max="20" step="0.01" value="3.89">
+        </div>
+        <div class="field">
+          <label>cbBTC Borrow APY (%) <span class="val" id="v-cbbtcapy">0.30</span></label>
+          <input type="range" id="cbbtcapy" min="0" max="10" step="0.01" value="0.30">
+        </div>
+        <div class="field">
+          <label>wBTC Supply APY (%) <span class="val" id="v-supplyapy">0.00</span></label>
+          <input type="range" id="supplyapy" min="0" max="3" step="0.01" value="0.00">
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Tilgung aus Einkommen</legend>
+        <div class="field">
+          <label>Monatliche Tilgung (USD) <span class="val" id="v-repay">0</span></label>
+          <input type="range" id="repay" min="0" max="5000" step="50" value="0">
+        </div>
+        <div class="field">
+          <label>Priorität</label>
+          <select id="repayPriority">
+            <option value="usdc-first">Erst USDC-Schuld, dann cbBTC</option>
+            <option value="cbbtc-first">Erst cbBTC-Schuld, dann USDC</option>
+          </select>
+        </div>
+      </fieldset>
+
+      <fieldset id="deleverFieldset">
+        <legend>Exit-Umschichtung (optional)</legend>
+        <div class="checkrow">
+          <input type="checkbox" id="deleverOn" checked>
+          <label for="deleverOn">Vor Stichtag zusätzlich cbBTC leihen &amp; USDC-Schuld tilgen</label>
+        </div>
+        <div class="field">
+          <label>Datum</label>
+          <input type="month" id="deleverDate" value="2030-10">
+        </div>
+        <div class="hint">Wandelt USD-Schuld (preisrisikobehaftet) in cbBTC-Schuld (bewegt sich mit dem Collateral) um — begrenzt durch die verfügbare Beleihungskapazität zu diesem Zeitpunkt. Bei Fluid nicht verfügbar: das würde Collateral/Schuld manuell zwischen den getrennten Vaults verschieben, was kein einfacher Loop-Schritt mehr ist.</div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Preisszenario</legend>
+        <div class="field">
+          <label>Horizont (Jahre ab heute) <span class="val" id="v-horizon">4.25</span></label>
+          <input type="range" id="horizon" min="1" max="10" step="0.25" value="4.25">
+          <div class="hint">Laufzeitende: <b id="horizonEndDate">Okt. 30</b> (Standard: Oktober 2030).</div>
+        </div>
+        <div class="field">
+          <label>Ziel-BTC-Preis am Laufzeitende (USD) <span class="val" id="v-targetend">180.000</span></label>
+          <input type="number" id="targetEndPrice" value="180000" min="1000" step="1000">
+          <div class="hint" id="targetEndHint">Setzt automatisch die CAGR unten so, dass dieser Preis am Laufzeitende (siehe oben) erreicht wird.</div>
+        </div>
+        <div class="field">
+          <label>Erwartetes Wachstum p.a. (CAGR, %) <span class="val" id="v-cagr">20</span></label>
+          <input type="range" id="cagr" min="-40" max="80" step="1" value="20">
+        </div>
+        <div class="field">
+          <label>Volatilität p.a. (%, für Monte Carlo) <span class="val" id="v-vol">55</span></label>
+          <input type="range" id="vol" min="10" max="120" step="1" value="55">
+        </div>
+        <div class="checkrow">
+          <input type="checkbox" id="crashOn">
+          <label for="crashOn">Crash-Test einbauen</label>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Crash-Datum</label>
+            <input type="month" id="crashDate" value="2028-06">
+          </div>
+          <div class="field">
+            <label>Tiefe (%) <span class="val" id="v-crashpct">50</span></label>
+            <input type="range" id="crashpct" min="5" max="90" step="1" value="50">
+          </div>
+        </div>
+        <div class="hint" style="margin-top:-6px;">
+          Der Preis erholt sich nach dem Crash so, dass am Laufzeitende trotzdem der Ziel-Preis von oben (Standard $180.000) erreicht wird — der Crash ist ein temporärer Einbruch, keine dauerhafte Verschiebung des Endpreises.
+        </div>
+      </fieldset>
+    </div>
+
+    <!-- RESULTS -->
+    <div class="results">
+
+      <div class="stat-row" id="statRow"></div>
+
+      <div class="panel">
+        <h2>BTC-Preis vs. Liquidationspreis der Position</h2>
+        <p class="desc">Deterministischer Preispfad (CAGR, optional mit Crash) gegen den Liquidationspreis, der sich durch Zinsakkumulation, Tilgung und die Exit-Umschichtung über die Zeit verändert.</p>
+        <div class="legend" id="legend-price"></div>
+        <div class="chart-wrap"><svg class="chart" id="chart-price" width="900" height="260"></svg></div>
+      </div>
+
+      <div class="panel">
+        <h2>Health Factor über die Zeit</h2>
+        <p class="desc" id="hfDesc">Fällt der Wert unter 1, liquidiert Aave die Position. Der Bereich unter 1,1 gilt üblicherweise als kritisch eng.</p>
+        <div class="chart-wrap"><svg class="chart" id="chart-hf" width="900" height="200"></svg></div>
+        <div id="liqEventsPanel" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Zusammensetzung: Collateral vs. Schulden</h2>
+        <p class="desc">Wert des wBTC-Collaterals gegen USDC- und cbBTC-Schulden (jeweils in USD), entlang des Preispfads.</p>
+        <div class="legend" id="legend-comp"></div>
+        <div class="chart-wrap"><svg class="chart" id="chart-comp" width="900" height="220"></svg></div>
+      </div>
+
+      <div class="panel">
+        <h2>Loop für Loop</h2>
+        <p class="desc">Aufbau der Position zum Startzeitpunkt (heutiger Preis), bevor Zeit vergeht. Liquidationspreis und Puffer beziehen sich jeweils auf den Stand nach diesem Loop.</p>
+        <div class="chart-wrap">
+          <table id="loopTable"></table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Monte-Carlo: Liquidationswahrscheinlichkeit</h2>
+        <p class="desc">Simuliert zufällige Preispfade (geometrische Brownsche Bewegung, CAGR/Volatilität von links, inkl. Crash-Test) und prüft, wie oft die Position vor Horizontende liquidiert würde.</p>
+        <button class="btn" id="runMC">300 Pfade simulieren</button>
+        <div class="mc-result" id="mcResult"></div>
+        <div class="chart-wrap" style="margin-top:12px;"><svg class="chart" id="chart-mc" width="900" height="260"></svg></div>
+      </div>
+
+    </div>
+  </div>
+
+  <footer class="notes">
+    <h3>Was hier bewusst vereinfacht ist</h3>
+    <ul>
+      <li>cbBTC und wBTC werden bis auf den einstellbaren Basis-Parameter als 1:1 preisgleich behandelt — in der Realität schwankt der Spread je nach Liquidität/Custodian-Vertrauen.</li>
+      <li>Zinssätze sind hier konstant; auf Aave sind Borrow-APYs variabel und reagieren auf Pool-Auslastung.</li>
+      <li>Eine echte Liquidation ist keine harte Kante bei HF&lt;1, sondern ein Prozess (Close Factor, Liquidation Bonus, ggf. Teilliquidation) — hier wird nur der Zeitpunkt des Unterschreitens markiert.</li>
+      <li>Gas-Kosten für die vielen Loop-Transaktionen sind nicht enthalten.</li>
+      <li>Die Modellierung der Steuerpflicht ab 2027 ist rein hypothetisch (Annahme des Nutzers) und keine Aussage über geltendes oder geplantes Recht.</li>
+    </ul>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var els = {};
+  ["btc0","p0","protocol","maxltv","lt","emode","emodeltv","emodelt","targethf","maxbonus","bonusatthreshold","force2x","util","fee","maxloops","basis",
+   "usdcapy","cbbtcapy","supplyapy","repay","repayPriority","deleverOn","deleverDate",
+   "horizon","cagr","vol","crashOn","crashDate","crashpct","targetEndPrice",
+   "basisShockOn","basisShockDate"].forEach(function(id){ els[id]=document.getElementById(id); });
+
+  var fmtUSD0 = new Intl.NumberFormat("de-DE",{maximumFractionDigits:0});
+  var fmtUSD2 = new Intl.NumberFormat("de-DE",{maximumFractionDigits:2});
+  var fmtBTC = new Intl.NumberFormat("de-DE",{minimumFractionDigits:3,maximumFractionDigits:4});
+
+  function startDate(){ return new Date(2026,6,13); } // 2026-07-13, session date
+  function monthDiff(a,b){ return (b.getFullYear()-a.getFullYear())*12 + (b.getMonth()-a.getMonth()); }
+  function parseMonthInput(v){ var parts=v.split("-"); return new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, 1); }
+  function addMonths(d,n){ return new Date(d.getFullYear(), d.getMonth()+n, 1); }
+  function fmtMonthLabel(d){ return d.toLocaleDateString("de-DE",{month:"short",year:"2-digit"}); }
+
+  function readParams(){
+    var util = parseFloat(els.util.value)/100;
+    var emodeOn = els.emode.checked;
+    var ltv = emodeOn ? parseFloat(els.emodeltv.value)/100 : parseFloat(els.maxltv.value)/100;
+    var lt  = emodeOn ? parseFloat(els.emodelt.value)/100  : parseFloat(els.lt.value)/100;
+    return {
+      protocol: els.protocol.value,
+      btc0: parseFloat(els.btc0.value)||0,
+      p0: parseFloat(els.p0.value)||1,
+      maxLtv: ltv,
+      LT: lt,
+      effLTV: ltv*util,
+      targetHF: parseFloat(els.targethf.value),
+      bonusAtThreshold: parseFloat(els.bonusatthreshold.value)/100,
+      maxBonus: parseFloat(els.maxbonus.value)/100,
+      hfForMaxBonus: 0.85,
+      force2x: els.force2x.checked,
+      swapFee: parseFloat(els.fee.value)/100,
+      maxLoops: parseInt(els.maxloops.value,10),
+      basis: 0,
+      basisTarget: parseFloat(els.basis.value)/100,
+      basisShockOn: els.basisShockOn.checked,
+      basisShockMonth: monthDiff(startDate(), parseMonthInput(els.basisShockDate.value)),
+      usdcApy: parseFloat(els.usdcapy.value)/100,
+      cbbtcApy: parseFloat(els.cbbtcapy.value)/100,
+      supplyApy: parseFloat(els.supplyapy.value)/100,
+      monthlyRepay: parseFloat(els.repay.value)||0,
+      repayPriority: els.repayPriority.value,
+      deleverOn: els.deleverOn.checked,
+      deleverMonth: monthDiff(startDate(), parseMonthInput(els.deleverDate.value)),
+      horizonMonths: Math.round(parseFloat(els.horizon.value)*12),
+      cagr: parseFloat(els.cagr.value)/100,
+      vol: parseFloat(els.vol.value)/100,
+      crashOn: els.crashOn.checked,
+      crashMonth: monthDiff(startDate(), parseMonthInput(els.crashDate.value)),
+      crashPct: parseFloat(els.crashpct.value)/100,
+      targetEndPrice: parseFloat(els.targetEndPrice.value)||0,
+      skipUsdcLoop: els.protocol.value==="fluid",
+      dust: 25
+    };
+  }
+
+  function buildInitialPosition(p){
+    // Always builds assuming a fair 1:1 cbBTC/wBTC peg -- a depeg is modelled as a later shock
+    // (see basisAtMonth), not something you'd knowingly loop into at par value.
+    var buildBasis = 0;
+    var collateral = p.btc0, usdcDebt = 0, cbbtcDebt = 0;
+    var loops = [];
+    // Loop 1: borrow USDC against wBTC, swap to wBTC.
+    // force2x borrows 100% of the wBTC value (a clean 2x) instead of capping at effLTV.
+    // skipUsdcLoop/skipCbbtcLoops let a single vault-pair (e.g. Fluid) build only one leg.
+    if (!p.skipUsdcLoop){
+      var borrowVal = collateral*p.p0*(p.force2x ? 1.0 : p.effLTV);
+      if (borrowVal > p.dust){
+        var addBtc = borrowVal*(1-p.swapFee)/p.p0;
+        collateral += addBtc; usdcDebt += borrowVal;
+        loops.push({n:1, asset:"USDC", borrowed:borrowVal, unit:"USD", addBtc:addBtc, collateral:collateral, usdcDebt:usdcDebt, cbbtcDebt:cbbtcDebt});
+      }
+    }
+    if (p.skipCbbtcLoops) return {collateral0:collateral, usdcDebt0:usdcDebt, cbbtcDebt0:cbbtcDebt, loops:loops};
+    var startN = loops.length+1;
+    for (var i=0;i<p.maxLoops;i++){
+      var debtValue = usdcDebt + cbbtcDebt*p.p0*(1+buildBasis);
+      var capacity = collateral*p.p0*p.effLTV - debtValue;
+      if (capacity <= p.dust) break;
+      var borrowAmt = capacity/(p.p0*(1+buildBasis));
+      var addBtc2 = borrowAmt*(1-p.swapFee);
+      collateral += addBtc2; cbbtcDebt += borrowAmt;
+      loops.push({n:startN+i, asset:"cbBTC", borrowed:borrowAmt, unit:"cbBTC", addBtc:addBtc2, collateral:collateral, usdcDebt:usdcDebt, cbbtcDebt:cbbtcDebt});
+    }
+    return {collateral0:collateral, usdcDebt0:usdcDebt, cbbtcDebt0:cbbtcDebt, loops:loops};
+  }
+
+  function healthFactor(collateral, usdcDebt, cbbtcDebt, P, p){
+    var debtValue = usdcDebt + cbbtcDebt*P*(1+p.basis);
+    if (debtValue <= 0) return Infinity;
+    return (collateral*P*p.LT)/debtValue;
+  }
+  function liqPrice(collateral, usdcDebt, cbbtcDebt, p){
+    var denom = collateral*p.LT - cbbtcDebt*(1+p.basis);
+    if (denom <= 0) return null;
+    return usdcDebt/denom;
+  }
+
+  function usesPartialLiquidation(protocol){ return protocol==="v4" || protocol==="fluid"; }
+
+  function liquidationBonus(hf, p){
+    if (hf>=1) return p.bonusAtThreshold;
+    var t = (1-hf)/(1-p.hfForMaxBonus);
+    t = Math.max(0, Math.min(1, t));
+    return p.bonusAtThreshold + t*(p.maxBonus-p.bonusAtThreshold);
+  }
+
+  // v4: partial liquidation — repay just enough debt (with a bonus-adjusted collateral seizure)
+  // to bring the health factor back to p.targetHF, instead of a full v3-style close-out.
+  function applyPartialLiquidation(collateral, usdcDebt, cbbtcDebt, P, p){
+    var debtValue = usdcDebt + cbbtcDebt*P*(1+p.basis);
+    var bonus = liquidationBonus(healthFactor(collateral,usdcDebt,cbbtcDebt,P,p), p);
+    var denom = p.LT*(1+bonus) - p.targetHF;
+    var x; // USD debt to cover
+    if (Math.abs(denom) < 1e-9){
+      x = debtValue;
+    } else {
+      x = (p.LT*collateral*P - p.targetHF*debtValue) / denom;
+    }
+    x = Math.max(0, Math.min(x, debtValue));
+    var maxSeizableValue = collateral*P/(1+bonus);
+    x = Math.min(x, maxSeizableValue);
+    var seizedBtc = x*(1+bonus)/P;
+    var fracUsdc = debtValue>0 ? usdcDebt/debtValue : 0;
+    var usdcRepay = x*fracUsdc;
+    var cbRepayValue = x-usdcRepay;
+    var newUsdcDebt = Math.max(0, usdcDebt-usdcRepay);
+    var newCbbtcDebt = Math.max(0, cbbtcDebt - cbRepayValue/(P*(1+p.basis)));
+    var newCollateral = Math.max(0, collateral-seizedBtc);
+    return {collateral:newCollateral, usdcDebt:newUsdcDebt, cbbtcDebt:newCbbtcDebt, seizedBtc:seizedBtc, bonus:bonus};
+  }
+
+  function priceAtMonth(m, p){
+    var t = m/12;
+    var price = p.p0*Math.pow(1+p.cagr, t);
+    if (p.crashOn && m >= p.crashMonth){
+      var priceAtCrash = p.p0*Math.pow(1+p.cagr, p.crashMonth/12)*(1-p.crashPct);
+      var tAfter = (m-p.crashMonth)/12;
+      var remainingYears = (p.horizonMonths - p.crashMonth)/12;
+      // Recover toward the fixed end-of-horizon target instead of permanently offsetting the
+      // trajectory by the crash — the crash is a temporary dip, not a lower discovered price at the horizon.
+      if (remainingYears > 0 && p.targetEndPrice > 0 && priceAtCrash > 0){
+        var recoveryCagr = Math.pow(p.targetEndPrice/priceAtCrash, 1/remainingYears) - 1;
+        price = priceAtCrash*Math.pow(1+recoveryCagr, tAfter);
+      } else {
+        price = priceAtCrash*Math.pow(1+p.cagr, tAfter);
+      }
+    }
+    return Math.max(price, 1);
+  }
+
+  // wBTC/cbBTC stay at a fair 1:1-ish peg until (if enabled) a depeg shock hits at basisShockMonth,
+  // after which cbBTC debt is permanently revalued by basisTarget relative to wBTC collateral.
+  function basisAtMonth(m, p){
+    if (!p.basisShockOn || m < p.basisShockMonth) return 0;
+    return p.basisTarget;
+  }
+
+  function simulateOverPricePath(pricePath, p){
+    var init = buildInitialPosition(p);
+    var collateral = init.collateral0, usdcDebt = init.usdcDebt0, cbbtcDebt = init.cbbtcDebt0;
+    var usdcM = Math.pow(1+p.usdcApy, 1/12)-1;
+    var cbbtcM = Math.pow(1+p.cbbtcApy, 1/12)-1;
+    var supplyM = Math.pow(1+p.supplyApy, 1/12)-1;
+    var snaps = [];
+    var liquidated=false, liquidationMonth=null, wipedOut=false;
+    var liquidationEvents = [], totalSeizedBtc = 0;
+    for (var m=0;m<pricePath.length;m++){
+      var P = pricePath[m];
+      var basisNow = basisAtMonth(m, p);
+      var pm = basisNow===0 ? p : Object.assign({}, p, {basis: basisNow});
+      if (m>0 && !liquidated && !wipedOut){
+        usdcDebt *= (1+usdcM);
+        cbbtcDebt *= (1+cbbtcM);
+        collateral *= (1+supplyM);
+        if (p.monthlyRepay>0){
+          var budget = p.monthlyRepay;
+          if (p.repayPriority==="usdc-first"){
+            var payUsdc = Math.min(budget, usdcDebt); usdcDebt -= payUsdc; budget -= payUsdc;
+            if (budget>0){ var cbAmt = budget/(P*(1+basisNow)); cbbtcDebt = Math.max(0, cbbtcDebt-cbAmt); }
+          } else {
+            var cbValue = cbbtcDebt*P*(1+basisNow);
+            var payCb = Math.min(budget, cbValue); cbbtcDebt -= payCb/(P*(1+basisNow)); budget -= payCb;
+            if (budget>0) usdcDebt = Math.max(0, usdcDebt-budget);
+          }
+        }
+        if (p.deleverOn && m===p.deleverMonth && usdcDebt>1){
+          var debtValueNow = usdcDebt + cbbtcDebt*P*(1+basisNow);
+          var capacityNow = Math.max(0, collateral*P*p.effLTV - debtValueNow);
+          var extraBorrowVal = Math.min(usdcDebt, capacityNow);
+          if (extraBorrowVal>0){
+            var extraCb = extraBorrowVal/(P*(1+basisNow));
+            cbbtcDebt += extraCb;
+            usdcDebt -= extraBorrowVal;
+          }
+        }
+      }
+      var hf = healthFactor(collateral, usdcDebt, cbbtcDebt, P, pm);
+      if (hf<1 && !wipedOut){
+        if (usesPartialLiquidation(p.protocol)){
+          var before = hf;
+          var res = applyPartialLiquidation(collateral, usdcDebt, cbbtcDebt, P, pm);
+          liquidationEvents.push({m:m, hfBefore:before, seizedBtc:res.seizedBtc, bonus:res.bonus});
+          totalSeizedBtc += res.seizedBtc;
+          collateral = res.collateral; usdcDebt = res.usdcDebt; cbbtcDebt = res.cbbtcDebt;
+          if (collateral <= 1e-9) wipedOut = true;
+          hf = healthFactor(collateral, usdcDebt, cbbtcDebt, P, pm);
+        } else {
+          liquidated = true; liquidationMonth = m;
+        }
+      }
+      var pl = liqPrice(collateral, usdcDebt, cbbtcDebt, pm);
+      snaps.push({m:m, P:P, collateral:collateral, usdcDebt:usdcDebt, cbbtcDebt:cbbtcDebt,
+        collValue:collateral*P, debtValue:usdcDebt+cbbtcDebt*P*(1+basisNow), hf:hf, pLiq:pl, liquidated:liquidated||wipedOut, basis:basisNow});
+    }
+    return {snaps:snaps, liquidated:liquidated, liquidationMonth:liquidationMonth, init:init,
+      liquidationEvents:liquidationEvents, totalSeizedBtc:totalSeizedBtc, wipedOut:wipedOut};
+  }
+
+  function detPricePath(p){
+    var arr = [];
+    for (var m=0;m<=p.horizonMonths;m++) arr.push(priceAtMonth(m,p));
+    return arr;
+  }
+
+  function flatLiquidationScenario(p){
+    var flat = [];
+    for (var m=0;m<=480;m++) flat.push(p.p0);
+    return simulateOverPricePath(flat, p);
+  }
+
+  // ---------- Rendering ----------
+
+  function statusPillHTML(hf){
+    if (hf>=1.5) return '<span class="pill good">gesund</span>';
+    if (hf>=1.15) return '<span class="pill warning">eng</span>';
+    return '<span class="pill critical">kritisch</span>';
+  }
+
+  function renderStats(det, p){
+    var init = det.init;
+    var s0 = det.snaps[0];
+    var lev = init.collateral0/p.btc0;
+    var flatRes = flatLiquidationScenario(p);
+    var flatLabel = p.basisShockOn ? "Zins- + Depeg-Risiko (flach)" : "Zins-Liquidation (flach)";
+    var flatText, flatSub;
+    if (usesPartialLiquidation(p.protocol)){
+      if (flatRes.liquidationEvents.length===0){
+        flatText = "keine Teilliquidation in 40 Jahren"; flatSub = "ohne Preisänderung, mit aktueller Tilgung"+(p.basisShockOn?" + Depeg-Schock":"");
+      } else {
+        flatText = flatRes.liquidationEvents.length+" Teilliquidation(en)";
+        flatSub = "kumulativ "+fmtBTC.format(flatRes.totalSeizedBtc)+" wBTC verloren, erste nach "+flatRes.liquidationEvents[0].m+" Monaten";
+      }
+    } else {
+      flatText = flatRes.liquidated ? (flatRes.liquidationMonth+" Monate bei konstantem Preis") : "kein Liquidationsrisiko in 40 Jahren";
+      flatSub = "ohne Preisänderung, mit aktueller Tilgung"+(p.basisShockOn?" + Depeg-Schock":"");
+    }
+    var html = "";
+    html += statTile("wBTC gesamt (nach Loops)", fmtBTC.format(init.collateral0)+" wBTC", "aus "+fmtBTC.format(p.btc0)+" wBTC eigenem Einsatz, "+init.loops.length+" Loops");
+    var asymptotic = buildInitialPosition(Object.assign({}, p, {maxLoops:300, dust:0.01})).collateral0/p.btc0;
+    html += statTile("Effektiver Hebel", lev.toFixed(2)+"×", "Grenzwert bei unbegrenzten Loops: "+asymptotic.toFixed(2)+"×");
+    html += statTile("Liquidationspreis heute", "$"+fmtUSD0.format(s0.pLiq||0), "aktueller Preis: $"+fmtUSD0.format(p.p0)+" ("+(((p.p0/(s0.pLiq||p.p0)-1)*100).toFixed(0))+"% Puffer)");
+    html += statTile("Health Factor heute", s0.hf===Infinity?"∞":s0.hf.toFixed(2), statusPillHTML(s0.hf));
+    html += statTile(flatLabel, flatText, flatSub);
+    if (usesPartialLiquidation(p.protocol)){
+      var evText = det.liquidationEvents.length===0 ? "0" : det.liquidationEvents.length.toString();
+      html += statTile("Teilliquidationen (Preisszenario)", evText, det.liquidationEvents.length===0 ? "im gewählten Preispfad kein Dip unter HF=1" : (fmtBTC.format(det.totalSeizedBtc)+" wBTC kumulativ verloren"));
+    }
+    document.getElementById("statRow").innerHTML = html;
+  }
+  function statTile(label, value, sub){
+    return '<div class="stat"><div class="label">'+label+'</div><div class="value num">'+value+'</div><div class="sub">'+sub+'</div></div>';
+  }
+
+  function formatLiqPrice(pl, p0){
+    if (pl===null) return {plStr:"—", bufferStr:"—"};
+    if (pl<=0) return {plStr:"$0 (nur Zins-Drift)", bufferStr:"kein Preisrisiko"};
+    return {plStr:"$"+fmtUSD0.format(pl), bufferStr:(((p0/pl-1)*100).toFixed(0))+"%"};
+  }
+  function loopRowHTML(l, p){
+    var borrowedStr = l.unit==="USD" ? "$"+fmtUSD0.format(l.borrowed) : fmtBTC.format(l.borrowed)+" cbBTC";
+    var pl = liqPrice(l.collateral, l.usdcDebt, l.cbbtcDebt, p);
+    var fmt = formatLiqPrice(pl, p.p0);
+    var plStr = fmt.plStr, bufferStr = fmt.bufferStr;
+    return "<tr><td>"+l.n+"</td><td>"+l.asset+"</td><td class='num'>"+borrowedStr+"</td><td class='num'>"+fmtBTC.format(l.addBtc)+"</td>"+
+      "<td class='num'>"+fmtBTC.format(l.collateral)+"</td><td class='num'>$"+fmtUSD0.format(l.usdcDebt)+"</td><td class='num'>"+fmtBTC.format(l.cbbtcDebt)+"</td>"+
+      "<td class='num'>"+plStr+"</td><td class='num'>"+bufferStr+"</td></tr>";
+  }
+  function renderLoopTable(init, p){
+    var rows = '<thead><tr><th>Loop</th><th>Asset geliehen</th><th>Betrag</th><th>+ wBTC (n. Fee)</th><th>Collateral</th><th>USDC-Schuld</th><th>cbBTC-Schuld</th><th>Liq.-Preis</th><th>Puffer z. heute</th></tr></thead><tbody>';
+    init.loops.forEach(function(l){ rows += loopRowHTML(l, p); });
+    rows += "</tbody>";
+    document.getElementById("loopTable").innerHTML = rows;
+  }
+
+  // Generic SVG line chart with hover crosshair. series: [{label,color,values:[{m,v}]}]
+  function drawLineChart(svgId, series, opts){
+    opts = opts||{};
+    var svg = document.getElementById(svgId);
+    var W = svg.clientWidth || 900, H = parseInt(svg.getAttribute("height"),10);
+    var padL = opts.padL!==undefined?opts.padL:60, padR = opts.padR!==undefined?opts.padR:104, padT = 16, padB = 26;
+    var innerW = W-padL-padR, innerH = H-padT-padB;
+
+    var allM = series[0].values.map(function(d){return d.m;});
+    var minM = allM[0], maxM = allM[allM.length-1];
+    var allV = [];
+    series.forEach(function(s){ s.values.forEach(function(d){ if (d.v!==null && isFinite(d.v)) allV.push(d.v); }); });
+    var minV = Math.min.apply(null, allV), maxV = Math.max.apply(null, allV);
+    if (opts.yMin!==undefined) minV = Math.min(minV, opts.yMin);
+    if (opts.yMax!==undefined) maxV = Math.max(maxV, opts.yMax);
+    var pad = (maxV-minV)*0.08 || Math.abs(maxV||1)*0.1;
+    minV -= pad; maxV += pad;
+    if (opts.zeroFloor) minV = Math.max(0,minV);
+
+    function x(m){ return padL + (m-minM)/(maxM-minM||1)*innerW; }
+    function y(v){ return padT + innerH - (v-minV)/(maxV-minV||1)*innerH; }
+
+    var svgns = "http://www.w3.org/2000/svg";
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    svg.setAttribute("viewBox","0 0 "+W+" "+H);
+
+    // gridlines (y)
+    var ticks = 4;
+    for (var i=0;i<=ticks;i++){
+      var v = minV + (maxV-minV)*i/ticks;
+      var yy = y(v);
+      var line = document.createElementNS(svgns,"line");
+      line.setAttribute("x1",padL); line.setAttribute("x2",W-padR); line.setAttribute("y1",yy); line.setAttribute("y2",yy);
+      line.setAttribute("class","grid-line");
+      svg.appendChild(line);
+      var txt = document.createElementNS(svgns,"text");
+      txt.setAttribute("x",padL-8); txt.setAttribute("y",yy+3); txt.setAttribute("text-anchor","end");
+      txt.setAttribute("class","axis-text");
+      txt.textContent = opts.yFormat?opts.yFormat(v):Math.round(v);
+      svg.appendChild(txt);
+    }
+    // x ticks (every ~6 months)
+    var step = Math.max(1, Math.round((maxM-minM)/6));
+    for (var m=minM;m<=maxM;m+=step){
+      var xx = x(m);
+      var txt2 = document.createElementNS(svgns,"text");
+      txt2.setAttribute("x",xx); txt2.setAttribute("y",H-8); txt2.setAttribute("text-anchor","middle");
+      txt2.setAttribute("class","axis-text");
+      txt2.textContent = fmtMonthLabel(addMonths(startDate(),m));
+      svg.appendChild(txt2);
+    }
+
+    series.forEach(function(s){
+      var d = "";
+      s.values.forEach(function(pt,i){
+        if (pt.v===null || !isFinite(pt.v)) return;
+        d += (d===""?"M":"L")+x(pt.m).toFixed(1)+","+y(pt.v).toFixed(1)+" ";
+      });
+      var path = document.createElementNS(svgns,"path");
+      path.setAttribute("d",d); path.setAttribute("fill","none");
+      path.setAttribute("stroke",s.color); path.setAttribute("stroke-width","2");
+      if (s.dashed) path.setAttribute("stroke-dasharray","5 4");
+      svg.appendChild(path);
+
+      var last = s.values[s.values.length-1];
+      if (last && last.v!==null && isFinite(last.v)){
+        var lbl = document.createElementNS(svgns,"text");
+        lbl.setAttribute("x", x(last.m)+6); lbl.setAttribute("y", y(last.v)+4);
+        lbl.setAttribute("class","end-label"); lbl.setAttribute("fill",s.color);
+        lbl.textContent = s.label;
+        svg.appendChild(lbl);
+      }
+    });
+
+    // crosshair + tooltip
+    var cross = document.createElementNS(svgns,"line");
+    cross.setAttribute("class","crosshair-line"); cross.setAttribute("y1",padT); cross.setAttribute("y2",H-padB);
+    cross.setAttribute("visibility","hidden");
+    svg.appendChild(cross);
+    var tipG = document.createElementNS(svgns,"g"); tipG.setAttribute("visibility","hidden");
+    var tipBg = document.createElementNS(svgns,"rect"); tipBg.setAttribute("class","tooltip-bg"); tipBg.setAttribute("rx","5");
+    var tipText = document.createElementNS(svgns,"text"); tipText.setAttribute("class","tooltip-box"); tipText.setAttribute("fill","var(--ink)");
+    tipG.appendChild(tipBg); tipG.appendChild(tipText); svg.appendChild(tipG);
+
+    var overlay = document.createElementNS(svgns,"rect");
+    overlay.setAttribute("x",padL); overlay.setAttribute("y",padT); overlay.setAttribute("width",innerW); overlay.setAttribute("height",innerH);
+    overlay.setAttribute("fill","transparent");
+    svg.appendChild(overlay);
+
+    overlay.addEventListener("mousemove", function(evt){
+      var rect = svg.getBoundingClientRect();
+      var mx = (evt.clientX-rect.left)*(W/rect.width);
+      var m = Math.round(minM + (mx-padL)/innerW*(maxM-minM));
+      m = Math.max(minM, Math.min(maxM, m));
+      var xx = x(m);
+      cross.setAttribute("x1",xx); cross.setAttribute("x2",xx); cross.setAttribute("visibility","visible");
+      var lines = [fmtMonthLabel(addMonths(startDate(),m))];
+      series.forEach(function(s){
+        var pt = s.values.find(function(p2){return p2.m===m;}) || s.values[m-minM];
+        if (pt) lines.push(s.label+": "+(opts.yFormat?opts.yFormat(pt.v):(pt.v===null?"—":pt.v.toFixed(2))));
+      });
+      var tw = Math.max.apply(null, lines.map(function(l){return l.length;}))*6.2+16;
+      var th = lines.length*14+10;
+      var boxX = Math.min(xx+10, W-padR-tw);
+      var boxY = padT+6;
+      tipBg.setAttribute("x",boxX); tipBg.setAttribute("y",boxY); tipBg.setAttribute("width",tw); tipBg.setAttribute("height",th);
+      tipText.innerHTML = "";
+      lines.forEach(function(l,i){
+        var tsp = document.createElementNS(svgns,"tspan");
+        tsp.setAttribute("x",boxX+8); tsp.setAttribute("y",boxY+16+i*14);
+        tsp.textContent = l;
+        tipText.appendChild(tsp);
+      });
+      tipG.setAttribute("visibility","visible");
+    });
+    overlay.addEventListener("mouseleave", function(){
+      cross.setAttribute("visibility","hidden"); tipG.setAttribute("visibility","hidden");
+    });
+  }
+
+  function drawStackedArea(svgId, snaps){
+    var svg = document.getElementById(svgId);
+    var W = svg.clientWidth || 900, H = parseInt(svg.getAttribute("height"),10);
+    var padL=60, padR=20, padT=16, padB=26;
+    var innerW=W-padL-padR, innerH=H-padT-padB;
+    var minM = snaps[0].m, maxM = snaps[snaps.length-1].m;
+    var maxV = Math.max.apply(null, snaps.map(function(s){return s.collValue;}))*1.08;
+
+    function x(m){ return padL+(m-minM)/(maxM-minM||1)*innerW; }
+    function y(v){ return padT+innerH-(v/maxV)*innerH; }
+
+    var svgns="http://www.w3.org/2000/svg";
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    svg.setAttribute("viewBox","0 0 "+W+" "+H);
+
+    for (var i=0;i<=4;i++){
+      var v=maxV*i/4, yy=y(v);
+      var line=document.createElementNS(svgns,"line");
+      line.setAttribute("x1",padL); line.setAttribute("x2",W-padR); line.setAttribute("y1",yy); line.setAttribute("y2",yy);
+      line.setAttribute("class","grid-line"); svg.appendChild(line);
+      var txt=document.createElementNS(svgns,"text");
+      txt.setAttribute("x",padL-8); txt.setAttribute("y",yy+3); txt.setAttribute("text-anchor","end"); txt.setAttribute("class","axis-text");
+      txt.textContent = "$"+fmtUSD0.format(v);
+      svg.appendChild(txt);
+    }
+    var step = Math.max(1, Math.round((maxM-minM)/6));
+    for (var m=minM;m<=maxM;m+=step){
+      var txt2=document.createElementNS(svgns,"text");
+      txt2.setAttribute("x",x(m)); txt2.setAttribute("y",H-8); txt2.setAttribute("text-anchor","middle"); txt2.setAttribute("class","axis-text");
+      txt2.textContent = fmtMonthLabel(addMonths(startDate(),m));
+      svg.appendChild(txt2);
+    }
+
+    function areaPath(getTop, getBottom){
+      var d = "";
+      snaps.forEach(function(s,i){ d += (i===0?"M":"L")+x(s.m).toFixed(1)+","+y(getTop(s)).toFixed(1)+" "; });
+      for (var i=snaps.length-1;i>=0;i--){ d += "L"+x(snaps[i].m).toFixed(1)+","+y(getBottom(snaps[i])).toFixed(1)+" "; }
+      d += "Z";
+      return d;
+    }
+    // collateral value (from 0)
+    var collPath = document.createElementNS(svgns,"path");
+    collPath.setAttribute("d", areaPath(function(s){return s.collValue;}, function(){return 0;}));
+    collPath.setAttribute("fill","var(--collateral)"); collPath.setAttribute("opacity","0.28");
+    svg.appendChild(collPath);
+    var collLine = document.createElementNS(svgns,"path");
+    var dl=""; snaps.forEach(function(s,i){ dl += (i===0?"M":"L")+x(s.m).toFixed(1)+","+y(s.collValue).toFixed(1)+" "; });
+    collLine.setAttribute("d",dl); collLine.setAttribute("fill","none"); collLine.setAttribute("stroke","var(--collateral)"); collLine.setAttribute("stroke-width","2");
+    svg.appendChild(collLine);
+
+    // debt stacked: usdc then cbbtc, from 0
+    function usdcTop(s){ return s.usdcDebt; }
+    function cbTop(s){ return s.debtValue; }
+    var usdcPath = document.createElementNS(svgns,"path");
+    usdcPath.setAttribute("d", areaPath(usdcTop, function(){return 0;}));
+    usdcPath.setAttribute("fill","var(--debt-usdc)"); usdcPath.setAttribute("opacity","0.55");
+    svg.appendChild(usdcPath);
+    var cbPath = document.createElementNS(svgns,"path");
+    cbPath.setAttribute("d", areaPath(cbTop, usdcTop));
+    cbPath.setAttribute("fill","var(--debt-cbbtc)"); cbPath.setAttribute("opacity","0.55");
+    svg.appendChild(cbPath);
+  }
+
+  function renderPriceChart(snaps){
+    var priceSeries = {label:"BTC-Preis", color:"var(--ink2)", values: snaps.map(function(s){return {m:s.m,v:s.P};})};
+    var liqSeries = {label:"Liq.-Preis", color:"var(--critical)", dashed:true, values: snaps.map(function(s){return {m:s.m,v:s.pLiq};})};
+    document.getElementById("legend-price").innerHTML =
+      legendItem("var(--ink2)","BTC-Preis (Szenario)") + legendItem("var(--critical)","Liquidationspreis");
+    drawLineChart("chart-price", [priceSeries, liqSeries], {yFormat:function(v){return "$"+fmtUSD0.format(v);}});
+  }
+  function renderHFChart(snaps){
+    var hfSeries = {label:"Health Factor", color:"var(--collateral)", values: snaps.map(function(s){return {m:s.m,v:s.hf===Infinity?null:s.hf};})};
+    var oneSeries = {label:"HF = 1", color:"var(--critical)", dashed:true, values: snaps.map(function(s){return {m:s.m,v:1};})};
+    drawLineChart("chart-hf", [hfSeries, oneSeries], {yFormat:function(v){return v.toFixed(2);}, yMin:0.8});
+  }
+  function legendItem(color,label){
+    return '<span class="sw"><span class="dot" style="background:'+color+'"></span>'+label+'</span>';
+  }
+
+  function liqEventsTableHTML(events){
+    var rows = '<table><thead><tr><th>Monat</th><th>HF vor Eingriff</th><th>Bonus</th><th>wBTC seized</th></tr></thead><tbody>';
+    events.forEach(function(e){
+      rows += "<tr><td>"+fmtMonthLabel(addMonths(startDate(),e.m))+"</td><td class='num'>"+e.hfBefore.toFixed(2)+"</td><td class='num'>"+(e.bonus*100).toFixed(1)+"%</td><td class='num'>"+fmtBTC.format(e.seizedBtc)+"</td></tr>";
+    });
+    return rows+"</tbody></table>";
+  }
+  function renderLiquidationEvents(sim, p){
+    var el = document.getElementById("liqEventsPanel");
+    if (!usesPartialLiquidation(p.protocol) || sim.liquidationEvents.length===0){ el.innerHTML=""; return; }
+    var totalTxt = sim.wipedOut ? "<b>Collateral vollständig aufgezehrt.</b>" : ("Position bleibt bestehen, Ziel-HF "+p.targetHF.toFixed(2)+" jeweils wiederhergestellt. Kumulativ verloren: "+fmtBTC.format(sim.totalSeizedBtc)+" wBTC.");
+    el.innerHTML = "<div class='hint' style='margin-bottom:6px;'>Teilliquidationen im gewählten Preisszenario — "+totalTxt+"</div>"+liqEventsTableHTML(sim.liquidationEvents);
+  }
+  var PROTOCOL_UI_TEXT = {
+    v4: {
+      emodeLabel: "BTC-korrelierter Spoke für die cbBTC-Loops (höhere LTV/LT)",
+      emodeSliderPrefix: "Spoke",
+      emodeHint: "Zusätzlicher Boost oben auf die bereits höhere v4-Basis (78/83 %) — für dieses konkrete Paar unbestätigt. Platzhalter: 82/84 % (nächstliegender bestätigter Realwert ist die LBTC_cbBTC-E-Mode-Kategorie auf Base, nicht dasselbe Paar/Chain). Vor echtem Einsatz im \"E-Mode: Manage\"-Panel auf app.aave.com/DeFi Saver prüfen, ob es für WBTC/cbBTC im Core Hub eine eigene Kategorie gibt.",
+      showEmode: true,
+      protocolHint: "Hub-and-Spoke-Architektur (live seit 30.3.2026): Max-LTV für WBTC im Core Hub liegt bei 78 % (LT geschätzt 83 %) — per DeFi-Saver-Simulation verifiziert (4,17× Exposure bei 97,46 % Borrow-Power-Used), höher als v3s 73 %. Dazu gemeinsame Liquidität über alle Spokes und die adaptive Teilliquidation unten.",
+      hfDesc: "Fällt der Wert unter 1, greift Aave v4 mit einer Teilliquidation ein und stellt den unten gewählten Ziel-HF wieder her — die Position endet dadurch meist nicht abrupt."
+    },
+    v3: {
+      emodeLabel: "BTC-korrelierter E-Mode für die cbBTC-Loops (höhere LTV/LT)",
+      emodeSliderPrefix: "E-Mode",
+      emodeHint: "Für WBTC/cbBTC auf v3 Ethereum ist keine E-Mode-Kategorie dokumentiert (nur ETH-korrelierte E-Modes). Platzhalter: 82/84 % (nächstliegender bestätigter Realwert: LBTC_cbBTC-E-Mode auf Base). Zusätzlich gilt: E-Mode ist bei v3 kontoweit — solange du USDC-Schulden hältst, kannst du nicht in den BTC-E-Mode wechseln.",
+      showEmode: true,
+      protocolHint: "Klassische isolierte Pools. Max-LTV für WBTC bestätigt bei 73 % / LT 78 % — per DeFi-Saver-Simulation verifiziert (3,59× Exposure bei 98,79 % Borrow-Power-Used). Statischer Liquidationsbonus, Voll- bzw. Close-Factor-Liquidation.",
+      hfDesc: "Fällt der Wert unter 1, liquidiert Aave v3 die Position (bis zu 50–100 % der Schuld in einem Zug, fester Bonus). Der Bereich unter 1,1 gilt üblicherweise als kritisch eng."
+    },
+    fluid: {
+      emodeLabel: "",
+      emodeSliderPrefix: "",
+      emodeHint: "",
+      showEmode: false,
+      protocolHint: "Vault Protocol mit einfacher Single-Collateral/Single-Debt-Position: nur wBTC als Collateral, nur cbBTC als Schuld (kein separater USDC-Vault, keine gepoolte Smart-Collateral-Konstruktion). Max-LTV/Zinsen unten sind Platzhalter auf Basis von Fluids \"bis zu 95 % LTV\"-Angabe, für das konkrete WBTC/cbBTC-Vault-Paar unbestätigt. Bitte über DeFi Saver (unterstützt Fluid) live gegenprüfen, genau wie bei den Aave-Werten.",
+      hfDesc: "Fluid nutzt ein Tick-/Slot-basiertes Batch-Liquidationssystem mit sehr niedrigem Liquidationsbonus (Marketing: bis runter auf 0,1 %) statt einer harten Voll-Liquidation — hier vereinfacht wie die v4-Teilliquidation modelliert, mit eigenen (niedrigeren) Bonus-Werten unten."
+    }
+  };
+  function updateProtocolUI(){
+    var t = PROTOCOL_UI_TEXT[els.protocol.value];
+    document.getElementById("emodeSection").style.display = t.showEmode ? "block" : "none";
+    if (t.showEmode){
+      document.getElementById("emodeLabel").textContent = t.emodeLabel;
+      document.getElementById("emodeltvLabel").innerHTML = t.emodeSliderPrefix+"-LTV (%) "+'<span class="val" id="v-emodeltv">'+els.emodeltv.value+'</span>';
+      document.getElementById("emodeltLabel").innerHTML = t.emodeSliderPrefix+"-LT (%) "+'<span class="val" id="v-emodelt">'+els.emodelt.value+'</span>';
+      document.getElementById("emodeHint").textContent = t.emodeHint;
+    }
+    var partial = usesPartialLiquidation(els.protocol.value);
+    document.getElementById("v4LiqRow").style.display = partial ? "flex" : "none";
+    document.getElementById("v4LiqHint").style.display = partial ? "block" : "none";
+    document.getElementById("protocolHint").textContent = t.protocolHint;
+    document.getElementById("hfDesc").textContent = t.hfDesc;
+    var isFluid = els.protocol.value==="fluid";
+    document.getElementById("force2xSection").style.display = isFluid ? "none" : "block";
+    document.getElementById("deleverFieldset").style.display = isFluid ? "none" : "block";
+  }
+
+  // Update 18.07.2026: per DeFi-Saver-Simulation (WBTC Collateral, cbBTC+USDC Debt, Ethereum) verifiziert:
+  // v3 Core -> exposure 3.587x bei 98.79% Borrow-Power-Used => impliziert Max-LTV 73.00% (deckt sich mit
+  // der Doku-Recherche). v4 Core Hub -> exposure 4.171x bei 97.46% Borrow-Power-Used => impliziert Max-LTV
+  // 78.00% -- OHNE separates E-Mode/Spoke-Feature, das ist bereits der Basiswert im Core Hub. LT ist aus den
+  // Screenshots nicht direkt ablesbar (Liquidation price: N/A bei Mixed-Debt, genau wie in diesem Tool);
+  // 83% ist eine Schätzung mit dem gleichen 5-Punkte-Abstand wie bei v3 (73/78), keine Bestätigung.
+  // Zinsen direkt aus den DeFi-Saver-Marktlisten abgelesen (Stand 18.07.2026, Screenshots des Nutzers):
+  // v3 Core: USDC Borrow 3.99%, cbBTC Borrow 0.28%, WBTC Supply 0.00%.
+  // v4 Core Hub: USDC Borrow 3.89%, cbBTC Borrow 0.30%, WBTC Supply 0.00%.
+  // Fluid: KEINE eigene Verifikation -- Platzhalter aus "bis zu 95% LTV" / "Liq.-Bonus bis 0.1%"-Marketing-
+  // Angaben (siehe Chat-Quellen), Zinsen grob an Aave angelehnt geschätzt. Bitte selbst gegenchecken.
+  var PROTOCOL_DEFAULTS = {
+    v4:    { maxltv:78, lt:83, emodeltv:82, emodelt:84, emodeOn:false, usdcApy:3.89, cbbtcApy:0.30, supplyApy:0.00, targetHF:1.05, maxBonus:8,   bonusAtThreshold:1 },
+    v3:    { maxltv:73, lt:78, emodeltv:82, emodelt:84, emodeOn:false, usdcApy:3.99, cbbtcApy:0.28, supplyApy:0.00, targetHF:1.05, maxBonus:8,   bonusAtThreshold:1 },
+    fluid: { maxltv:90, lt:93, emodeltv:90, emodelt:93, emodeOn:false, usdcApy:4.50, cbbtcApy:0.50, supplyApy:0.00, targetHF:1.03, maxBonus:1.5, bonusAtThreshold:0.1 }
+  };
+  function applyProtocolDefaults(){
+    var d = PROTOCOL_DEFAULTS[els.protocol.value];
+    els.maxltv.value = d.maxltv; document.getElementById("v-maxltv").textContent = d.maxltv;
+    els.lt.value = d.lt; document.getElementById("v-lt").textContent = d.lt;
+    els.emodeltv.value = d.emodeltv;
+    els.emodelt.value = d.emodelt;
+    els.emode.checked = d.emodeOn;
+    els.usdcapy.value = d.usdcApy; document.getElementById("v-usdcapy").textContent = d.usdcApy.toFixed(2);
+    els.cbbtcapy.value = d.cbbtcApy; document.getElementById("v-cbbtcapy").textContent = d.cbbtcApy.toFixed(2);
+    els.supplyapy.value = d.supplyApy; document.getElementById("v-supplyapy").textContent = d.supplyApy.toFixed(2);
+    els.targethf.value = d.targetHF; document.getElementById("v-targethf").textContent = d.targetHF.toFixed(2);
+    els.maxbonus.value = d.maxBonus; document.getElementById("v-maxbonus").textContent = d.maxBonus;
+    els.bonusatthreshold.value = d.bonusAtThreshold;
+    updateProtocolUI();
+    render();
+  }
+  document.getElementById("protocol").addEventListener("change", applyProtocolDefaults);
+
+  function render(){
+    var p = readParams();
+    if (p.btc0<=0 || p.p0<=0) return;
+    updateProtocolUI();
+    var pricePath = detPricePath(p);
+    document.getElementById("legend-comp").innerHTML =
+      legendItem("var(--collateral)","wBTC-Collateral (USD)") + legendItem("var(--debt-usdc)","USDC-Schuld") + legendItem("var(--debt-cbbtc)","cbBTC-Schuld (USD)");
+    var sim = simulateOverPricePath(pricePath, p);
+    renderStats(sim, p);
+    renderLoopTable(sim.init, p);
+    renderPriceChart(sim.snaps);
+    renderHFChart(sim.snaps);
+    renderLiquidationEvents(sim, p);
+    drawStackedArea("chart-comp", sim.snaps);
+  }
+
+  // ---------- Monte Carlo ----------
+  function randNormal(){
+    var u=0,v=0;
+    while(u===0) u=Math.random();
+    while(v===0) v=Math.random();
+    return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+  }
+  function gbmPath(p){
+    var dt=1/12, mu=p.cagr, sigma=p.vol;
+    var path=[p.p0];
+    var price=p.p0;
+    for (var m=1;m<=p.horizonMonths;m++){
+      var z = randNormal();
+      price = price*Math.exp((mu-0.5*sigma*sigma)*dt + sigma*Math.sqrt(dt)*z);
+      if (p.crashOn && m===p.crashMonth) price = price*(1-p.crashPct);
+      path.push(Math.max(price,1));
+    }
+    return path;
+  }
+
+  function runMonteCarlo(){
+    var p = readParams();
+    var N = 300;
+    var paths = [];
+    var html = "";
+
+    if (usesPartialLiquidation(p.protocol)){
+      var pathsWithEvent = 0, wipeouts = 0, seizedList = [], firstEventMonths = [];
+      for (var i=0;i<N;i++){
+        var path = gbmPath(p);
+        var sim = simulateOverPricePath(path, p);
+        paths.push(path);
+        if (sim.liquidationEvents.length>0){
+          pathsWithEvent++;
+          firstEventMonths.push(sim.liquidationEvents[0].m);
+          seizedList.push(sim.totalSeizedBtc);
+        }
+        if (sim.wipedOut) wipeouts++;
+      }
+      seizedList.sort(function(a,b){return a-b;});
+      var medianSeized = seizedList.length ? seizedList[Math.floor(seizedList.length/2)] : 0;
+      var probPct = (pathsWithEvent/N*100).toFixed(1);
+      html += statTile("Pfade mit ≥1 Teilliquidation", probPct+"%", pathsWithEvent+" von "+N+" Pfaden");
+      html += statTile("Median verlorenes wBTC (falls betroffen)", fmtBTC.format(medianSeized), "unter den betroffenen Pfaden");
+      html += statTile("Davon vollständig aufgezehrt", wipeouts+" von "+N, "Collateral komplett verloren trotz Teilliquidation");
+    } else {
+      var liquidatedCount = 0;
+      var liqMonths = [];
+      for (var i2=0;i2<N;i2++){
+        var path2 = gbmPath(p);
+        var sim2 = simulateOverPricePath(path2, p);
+        paths.push(path2);
+        if (sim2.liquidated){ liquidatedCount++; liqMonths.push(sim2.liquidationMonth); }
+      }
+      var probPct2 = (liquidatedCount/N*100).toFixed(1);
+      var medianLiqMonth = liqMonths.length ? liqMonths.sort(function(a,b){return a-b;})[Math.floor(liqMonths.length/2)] : null;
+      html += statTile("Liquidationswahrscheinlichkeit", probPct2+"%", liquidatedCount+" von "+N+" Pfaden bis Horizontende");
+      html += statTile("Median Zeitpunkt (falls liquidiert)", medianLiqMonth===null?"—":(medianLiqMonth+" Monate"), "ab heute");
+    }
+    document.getElementById("mcResult").innerHTML = html;
+
+    drawFanChart("chart-mc", paths, p);
+  }
+
+  function drawFanChart(svgId, paths, p){
+    var svg = document.getElementById(svgId);
+    var W = svg.clientWidth||900, H=parseInt(svg.getAttribute("height"),10);
+    var padL=60,padR=20,padT=16,padB=26;
+    var innerW=W-padL-padR, innerH=H-padT-padB;
+    var months = p.horizonMonths+1;
+    var percentiles = {p5:[],p25:[],p50:[],p75:[],p95:[]};
+    for (var m=0;m<months;m++){
+      var vals = paths.map(function(pa){return pa[m];}).sort(function(a,b){return a-b;});
+      function q(qq){ return vals[Math.min(vals.length-1, Math.max(0,Math.floor(qq*(vals.length-1))))]; }
+      percentiles.p5.push(q(0.05)); percentiles.p25.push(q(0.25)); percentiles.p50.push(q(0.5));
+      percentiles.p75.push(q(0.75)); percentiles.p95.push(q(0.95));
+    }
+    var maxV = Math.max.apply(null, percentiles.p95)*1.05;
+    var minV = 0;
+    function x(m){ return padL+m/(months-1)*innerW; }
+    function y(v){ return padT+innerH-(v-minV)/(maxV-minV)*innerH; }
+
+    var svgns="http://www.w3.org/2000/svg";
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    svg.setAttribute("viewBox","0 0 "+W+" "+H);
+
+    for (var i=0;i<=4;i++){
+      var v=maxV*i/4, yy=y(v);
+      var line=document.createElementNS(svgns,"line");
+      line.setAttribute("x1",padL); line.setAttribute("x2",W-padR); line.setAttribute("y1",yy); line.setAttribute("y2",yy);
+      line.setAttribute("class","grid-line"); svg.appendChild(line);
+      var txt=document.createElementNS(svgns,"text");
+      txt.setAttribute("x",padL-8); txt.setAttribute("y",yy+3); txt.setAttribute("text-anchor","end"); txt.setAttribute("class","axis-text");
+      txt.textContent="$"+fmtUSD0.format(v);
+      svg.appendChild(txt);
+    }
+    var step = Math.max(1, Math.round((months-1)/6));
+    for (var m2=0;m2<months;m2+=step){
+      var txt2=document.createElementNS(svgns,"text");
+      txt2.setAttribute("x",x(m2)); txt2.setAttribute("y",H-8); txt2.setAttribute("text-anchor","middle"); txt2.setAttribute("class","axis-text");
+      txt2.textContent = fmtMonthLabel(addMonths(startDate(),m2));
+      svg.appendChild(txt2);
+    }
+
+    function bandPath(top,bottom){
+      var d="";
+      for (var m=0;m<months;m++) d += (m===0?"M":"L")+x(m).toFixed(1)+","+y(top[m]).toFixed(1)+" ";
+      for (var m3=months-1;m3>=0;m3--) d += "L"+x(m3).toFixed(1)+","+y(bottom[m3]).toFixed(1)+" ";
+      return d+"Z";
+    }
+    var band90 = document.createElementNS(svgns,"path");
+    band90.setAttribute("d", bandPath(percentiles.p95, percentiles.p5));
+    band90.setAttribute("fill","var(--collateral)"); band90.setAttribute("opacity","0.12");
+    svg.appendChild(band90);
+    var band50 = document.createElementNS(svgns,"path");
+    band50.setAttribute("d", bandPath(percentiles.p75, percentiles.p25));
+    band50.setAttribute("fill","var(--collateral)"); band50.setAttribute("opacity","0.22");
+    svg.appendChild(band50);
+    var medianLine = document.createElementNS(svgns,"path");
+    var dm=""; for (var m4=0;m4<months;m4++) dm += (m4===0?"M":"L")+x(m4).toFixed(1)+","+y(percentiles.p50[m4]).toFixed(1)+" ";
+    medianLine.setAttribute("d",dm); medianLine.setAttribute("fill","none"); medianLine.setAttribute("stroke","var(--ink)"); medianLine.setAttribute("stroke-width","2");
+    svg.appendChild(medianLine);
+
+    var lbl = document.createElementNS(svgns,"text");
+    lbl.setAttribute("x",padL+8); lbl.setAttribute("y",padT+16); lbl.setAttribute("class","axis-text");
+    lbl.textContent = "Median-Pfad, Bänder = 25–75 % und 5–95 % der simulierten Preise";
+    svg.appendChild(lbl);
+  }
+
+  document.getElementById("runMC").addEventListener("click", runMonteCarlo);
+
+  function setCagrForMultiplier(mult, months){
+    var cagrPct = (Math.pow(mult, 12/months) - 1) * 100;
+    var sliderMin = parseFloat(els.cagr.min), sliderMax = parseFloat(els.cagr.max);
+    if (cagrPct > sliderMax) els.cagr.max = String(Math.ceil(cagrPct/10)*10);
+    if (cagrPct < sliderMin) els.cagr.min = String(Math.floor(cagrPct/10)*10);
+    els.cagr.value = cagrPct.toFixed(1);
+    document.getElementById("v-cagr").textContent = cagrPct.toFixed(1);
+    return cagrPct;
+  }
+
+  function updateHorizonEndLabel(){
+    var months = Math.round(parseFloat(els.horizon.value)*12);
+    document.getElementById("horizonEndDate").textContent = fmtMonthLabel(addMonths(startDate(), months));
+  }
+
+  function applyTargetEndPrice(){
+    var p0 = parseFloat(els.p0.value)||1;
+    var months = Math.round(parseFloat(els.horizon.value)*12);
+    var targetPrice = parseFloat(els.targetEndPrice.value);
+    document.getElementById("v-targetend").textContent = fmtUSD0.format(targetPrice||0);
+    if (!targetPrice || targetPrice<=0 || months<=0) return;
+    var mult = targetPrice/p0;
+    var cagrPct = setCagrForMultiplier(mult, months);
+    document.getElementById("targetEndHint").textContent =
+      "$"+fmtUSD0.format(targetPrice)+" bis "+document.getElementById("horizonEndDate").textContent+" entspricht ca. "+cagrPct.toFixed(1)+" % p.a. Wachstum (jetzt als CAGR gesetzt).";
+  }
+  ["targetEndPrice","horizon","p0"].forEach(function(id){
+    document.getElementById(id).addEventListener("input", function(){ updateHorizonEndLabel(); applyTargetEndPrice(); render(); });
+  });
+
+  // wire up live value labels + re-render
+  var allInputs = document.querySelectorAll("input, select");
+  allInputs.forEach(function(inp){
+    inp.addEventListener("input", function(){
+      var valEl = document.getElementById("v-"+this.id);
+      if (valEl){
+        if (this.type==="range" || this.type==="number"){
+          valEl.textContent = this.id==="p0" ? fmtUSD0.format(this.value) : parseFloat(this.value).toString();
+        }
+      }
+      render();
+    });
+  });
+
+  applyProtocolDefaults();
+  updateHorizonEndLabel();
+  applyTargetEndPrice();
+  render();
+})();
+</script>
+</body>
+</html>
