@@ -183,6 +183,10 @@
             <option value="fluid">Fluid Protocol (Vaults, single collateral/debt)</option>
           </select>
           <div class="hint" id="protocolHint"></div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <button type="button" id="live-rates-btn" onclick="fetchLiveRates()" style="padding:4px 12px;font-size:13px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--ink);cursor:pointer;">Live-Zinsen aktualisieren</button>
+            <span id="live-rates-status" style="font-size:12px;color:var(--muted);"></span>
+          </div>
         </div>
         <div class="field-row">
           <div class="field">
@@ -1203,6 +1207,84 @@
   updateHorizonEndLabel();
   applyTargetEndPrice();
   render();
+
+  /* === Live-Zinsen von Aave v3 API (Ethereum) abrufen === */
+  var AAVE_GQL = 'https://api.v3.aave.com/graphql';
+  var AAVE_QUERY = '{ markets(request: { chainIds: [1] }) { reserves { underlyingToken { symbol } supplyInfo { apy { formatted } maxLTV { formatted } liquidationThreshold { formatted } liquidationBonus { formatted } } borrowInfo { apy { formatted } } } } }';
+
+  function fetchLiveRates(){
+    var btn = document.getElementById('live-rates-btn');
+    var status = document.getElementById('live-rates-status');
+    if (btn) btn.disabled = true;
+    if (status) status.textContent = 'Lade live Zinsen …';
+    fetch(AAVE_GQL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: AAVE_QUERY })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var rates = {};
+      var markets = (d.data && d.data.markets) || [];
+      for (var i = 0; i < markets.length; i++){
+        var reserves = markets[i].reserves || [];
+        for (var j = 0; j < reserves.length; j++){
+          var r = reserves[j];
+          var sym = r.underlyingToken && r.underlyingToken.symbol;
+          if (!sym) continue;
+          var si = r.supplyInfo || {};
+          var bi = r.borrowInfo || {};
+          if (sym === 'WBTC' && !rates.wbtc){
+            rates.wbtc = {
+              supplyApy: parseFloat(si.apy && si.apy.formatted || '0'),
+              borrowApy: parseFloat(bi.apy && bi.apy.formatted || '0'),
+              maxltv: parseFloat(si.maxLTV && si.maxLTV.formatted || '0'),
+              lt: parseFloat(si.liquidationThreshold && si.liquidationThreshold.formatted || '0'),
+              lb: parseFloat(si.liquidationBonus && si.liquidationBonus.formatted || '0')
+            };
+          }
+          if (sym === 'cbBTC' && !rates.cbbtc){
+            rates.cbbtc = {
+              borrowApy: parseFloat(bi.apy && bi.apy.formatted || '0')
+            };
+          }
+          if (sym === 'USDC' && !rates.usdc){
+            rates.usdc = {
+              borrowApy: parseFloat(bi.apy && bi.apy.formatted || '0')
+            };
+          }
+        }
+      }
+      if (!rates.wbtc || !rates.usdc){
+        if (status) status.textContent = 'Fehler: Zinsen nicht gefunden.';
+        if (btn) btn.disabled = false;
+        return;
+      }
+      // v3 aktualisieren
+      PROTOCOL_DEFAULTS.v3.usdcApy = rates.usdc.borrowApy;
+      PROTOCOL_DEFAULTS.v3.cbbtcApy = rates.cbbtc.borrowApy || 0;
+      PROTOCOL_DEFAULTS.v3.supplyApy = rates.wbtc.supplyApy;
+      PROTOCOL_DEFAULTS.v3.maxltv = rates.wbtc.maxltv;
+      PROTOCOL_DEFAULTS.v3.lt = rates.wbtc.lt;
+      // v4: gleiche Raten wie v3 (v4 API noch nicht öffentlich dokumentiert)
+      PROTOCOL_DEFAULTS.v4.usdcApy = rates.usdc.borrowApy;
+      PROTOCOL_DEFAULTS.v4.cbbtcApy = rates.cbbtc.borrowApy || 0;
+      PROTOCOL_DEFAULTS.v4.supplyApy = rates.wbtc.supplyApy;
+      // Liquidation-Bonus: v4 hat 7.50% für WBTC (laut DeFi-Saver)
+      applyProtocolDefaults();
+      var now = new Date();
+      var ts = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+      if (status) status.textContent = 'Live-Zinsen geladen (' + ts + '): USDC ' + rates.usdc.borrowApy.toFixed(2) + '%, cbBTC ' + (rates.cbbtc.borrowApy || 0).toFixed(2) + '%, wBTC Supply ' + rates.wbtc.supplyApy.toFixed(2) + '%, LTV ' + rates.wbtc.maxltv.toFixed(0) + '%, LT ' + rates.wbtc.lt.toFixed(0) + '%';
+      if (btn) btn.disabled = false;
+    })
+    .catch(function(err){
+      if (status) status.textContent = 'Fehler beim Laden: ' + err.message;
+      if (btn) btn.disabled = false;
+    });
+  }
+
+  fetchLiveRates();
+  window.fetchLiveRates = fetchLiveRates;
 })();
 </script>
 </body>
