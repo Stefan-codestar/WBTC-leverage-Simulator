@@ -16,10 +16,21 @@ jobs:
 
       - name: Fetch Fluid rates from DefiLlama
         run: |
-          curl -s 'https://yields.llama.fi/pools' | python3 -c "
+          set -e
+          echo "Fetching Fluid rates from DefiLlama..."
+          curl -s --max-time 60 -o /tmp/pools.json 'https://yields.llama.fi/pools'
+          echo "API response size: $(wc -c < /tmp/pools.json) bytes"
+          
+          python3 -c "
           import json, sys
-          data = json.load(sys.stdin)
+          with open('/tmp/pools.json') as f:
+              data = json.load(f)
+          
           pools = data.get('data', data) if isinstance(data, dict) else data
+          if not pools:
+              print('ERROR: No pools data from API')
+              sys.exit(1)
+          
           fluid = {}
           for p in pools:
               proj = p.get('project', '') or ''
@@ -30,6 +41,11 @@ jobs:
                       fluid['wbtc'] = {'supplyApy': p.get('apy', 0), 'tvlUsd': p.get('tvlUsd', 0)}
                   elif sym == 'USDC' and 'usdc' not in fluid:
                       fluid['usdc'] = {'supplyApy': p.get('apy', 0), 'tvlUsd': p.get('tvlUsd', 0)}
+          
+          if not fluid:
+              print('ERROR: No Fluid lending pools found on Ethereum')
+              sys.exit(1)
+          
           result = {
               'wbtcSupplyApy': fluid.get('wbtc', {}).get('supplyApy', 0),
               'usdcSupplyApy': fluid.get('usdc', {}).get('supplyApy', 0),
@@ -38,6 +54,7 @@ jobs:
               'source': 'DefiLlama yields API (fluid-lending, Ethereum)',
               'updatedAt': __import__('datetime').datetime.utcnow().isoformat() + 'Z'
           }
+          
           with open('fluid-rates.json', 'w') as f:
               json.dump(result, f, indent=2)
           print(json.dumps(result, indent=2))
