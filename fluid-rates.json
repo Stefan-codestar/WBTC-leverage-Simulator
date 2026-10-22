@@ -1,8 +1,8 @@
 {
   "wbtcSupplyApy": 0.05,
-  "usdcSupplyApy": 6.24,
+  "usdcSupplyApy": 5.7,
   "wbtcTvlUsd": 25399631,
-  "usdcTvlUsd": 134259716,
+  "usdcTvlUsd": 134104270,
   "source": "DefiLlama yields API (fluid-lending, Ethereum)",
-  "updatedAt": "2026-10-22T11:07:03.907093Z"
+  "updatedAt": "2026-10-22T16:35:11.028811Z"
 }
